@@ -17,6 +17,7 @@ const LAYER = {
   territoryLine: "rc-territory-line",
   routeLine: "rc-route-line",
   locationCircle: "rc-location-circle",
+  locationHighlight: "rc-location-highlight",
   locationLabel: "rc-location-label",
 } as const;
 
@@ -66,6 +67,22 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
         "destroyed", ["literal", [1, 1.5]],
         ["literal", [1, 0]],
       ],
+    },
+  });
+
+  // Selection halo, drawn under the markers; filtered to the selected id.
+  map.addLayer({
+    id: LAYER.locationHighlight,
+    type: "circle",
+    source: SRC.locations,
+    filter: ["==", ["get", "id"], "__none__"],
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 9, 10, 15],
+      "circle-color": "#ffffff",
+      "circle-opacity": 0.18,
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 2,
+      "circle-stroke-opacity": 0.9,
     },
   });
 
@@ -156,4 +173,14 @@ export function onLocationClick(map: MlMap, handler: (locationId: string) => voi
     const id = f?.properties?.id;
     if (typeof id === "string") handler(id);
   });
+}
+
+/** Highlight the selected location marker (or clear with null). */
+export function setSelectedLocation(map: MlMap, locationId: string | null): void {
+  if (!map.getLayer(LAYER.locationHighlight)) return;
+  map.setFilter(LAYER.locationHighlight, [
+    "==",
+    ["get", "id"],
+    locationId ?? "__none__",
+  ]);
 }

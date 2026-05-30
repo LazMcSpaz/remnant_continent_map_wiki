@@ -368,3 +368,89 @@ body {
   opacity: 0.6;
   cursor: default;
 }
+.wiki-btn-ghost {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.wiki-btn-ghost:hover {
+  color: var(--text);
+}
+
+/* Edit affordances */
+.wiki-edit-btn {
+  margin-top: 0.9rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+}
+.wiki-edit-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.wiki-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+}
+.wiki-field-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.wiki-field-input,
+.wiki-note-tags {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+}
+.wiki-form-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+/* Clickable connection rows */
+.wiki-conn-link {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.2rem 0.3rem;
+  margin: 0 -0.3rem;
+}
+.wiki-conn-link:hover,
+.wiki-conn-link:focus-visible {
+  background: var(--bg);
+  outline: none;
+}
+.wiki-conn-link .wiki-conn-to {
+  color: var(--accent);
+}
+
+/* Inline note markup */
+.wiki-note-body code {
+  background: var(--bg);
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+.wiki-note-body a {
+  color: var(--accent);
+}
+.wiki-link {
+  color: var(--accent);
+  border-bottom: 1px dotted var(--accent);
+}

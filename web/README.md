@@ -59,15 +59,22 @@ backend the toolbar stays hidden and the app is read-only.
 
 ## Wiki panel
 
-Click a city marker to open the **tabbed wiki panel** (top-right). Tabs:
+Click a city marker to open the **tabbed wiki panel** (top-right); the marker
+gets a selection halo. Tabs (arrow keys navigate the tablist; Esc closes):
 
-- **Overview** — type, new/old-world names, faction, coordinates.
-- **Population** — authored population stat.
-- **Resources** — `resource_overrides` shown as 0–100 bars (Phase 2 will also
-  derive these from geography; overrides pin them).
+- **Overview** — type, new/old-world names, faction, coordinates. *Editable.*
+- **Population** — authored population stat. *Editable.*
+- **Resources** — `resource_overrides` as 0–100 bars (Phase 2 will also derive
+  these from geography; overrides pin them). *Editable.*
 - **Connections** — routes touching this location, from the derived network
-  graph, with length, travel time, and intact/damaged/severed status.
-- **Notes** — read/add/delete annotations from the `notes` table.
+  graph, with length, travel time, and intact/damaged/severed status. Rows that
+  lead to another city are **clickable** — they fly to and open that city.
+- **Notes** — read/add/delete annotations (`notes` table) with comma-separated
+  tags, light inline Markdown (`**bold**`, `*italic*`, `` `code` ``, links,
+  `[[wiki-links]]`), and relative timestamps.
 
-`src/notes/wiki-panel.ts` is pure DOM; it reads `LocationDetail` (authored),
-the `NetworkGraph` (derived), and notes, keeping the three layers distinct.
+Edits write to the authored layer, then the panel reloads data, rebuilds the
+derived graph, and re-renders in place. `src/notes/wiki-panel.ts` is pure DOM
+and talks to a `WikiHost` (implemented in `main.ts`) so it never owns map or
+data state — `LocationDetail` (authored), `NetworkGraph` (derived), and notes
+stay distinct, consistent with the three-layer model.

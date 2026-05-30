@@ -309,3 +309,17 @@ export async function updateLocationFields(
   const { error } = await sb.from("locations").update(fields).eq("id", id);
   if (error) throw new Error(`update location failed: ${error.message}`);
 }
+
+/** Replace a location's resource_overrides (pinned derived values). */
+export async function updateLocationResources(
+  id: string,
+  resources: Record<string, number>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb
+    .from("locations")
+    .update({ resource_overrides: resources })
+    .eq("id", id);
+  if (error) throw new Error(`update resources failed: ${error.message}`);
+}

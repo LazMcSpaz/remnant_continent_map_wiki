@@ -8,10 +8,10 @@ import "./styles.css";
 import type { Map as MlMap } from "maplibre-gl";
 import { createBasemap } from "./map/basemap";
 import { loadFeatures, hasBackend, type FeatureData } from "./layers/features";
-import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, type NameMode } from "./layers/render";
+import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, type NameMode } from "./layers/render";
 import { buildNetworkGraph, edgeTravelHours, type NetworkGraph } from "./derived/network-graph";
 import { mountEditorToolbar } from "./layers/editor";
-import { WikiPanel } from "./notes/wiki-panel";
+import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 
 function setStatus(text: string, kind: "info" | "error" = "info"): void {
   const el = document.getElementById("status");
@@ -58,13 +58,34 @@ async function boot(): Promise<void> {
     const nameMode = initNameToggle(map);
     addFeatureLayers(map, data, nameMode);
 
-    // Tabbed wiki panel: open on location click with current detail + graph.
+    // Tabbed wiki panel. The host is its window into live app state, so the
+    // panel can edit, navigate, and refresh without owning data or map state.
     const appEl = document.getElementById("app") ?? document.body;
-    const wiki = new WikiPanel(appEl);
-    onLocationClick(map, (id) => {
+    const host: WikiHost = {
+      getDetail: (id) => data.locationDetails.get(id),
+      getGraph: () => graph,
+      canEdit: () => hasBackend(),
+      setStatus,
+      navigateTo: (id) => selectLocation(id),
+      reloadData: async () => {
+        data = await loadFeatures();
+        graph = rebuildGraph(data);
+        updateFeatureData(map, data);
+        setStatus(summarize(data));
+      },
+    };
+    const wiki = new WikiPanel(appEl, host, () => setSelectedLocation(map, null));
+
+    /** Select a location: highlight it, ease toward it, and open the panel. */
+    const selectLocation = (id: string): void => {
       const detail = data.locationDetails.get(id);
-      if (detail) wiki.open(detail, graph, () => {});
-    });
+      if (!detail) return;
+      setSelectedLocation(map, id);
+      if (detail.lngLat) map.easeTo({ center: detail.lngLat, duration: 500 });
+      wiki.open(id);
+    };
+
+    onLocationClick(map, selectLocation);
 
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");
@@ -76,6 +97,7 @@ async function boot(): Promise<void> {
         (next) => {
           data = next;
           graph = rebuildGraph(next);
+          if (wiki.isOpen()) wiki.rerenderActive();
         },
       );
     }
