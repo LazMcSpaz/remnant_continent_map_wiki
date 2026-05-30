@@ -65,6 +65,8 @@ function summarizeImport(r: ImportResult): string {
     `${r.routes} routes`,
     `${r.territories} territories`,
     `${r.terrain} terrain regions`,
+    `${r.breaks} breaks`,
+    `${r.corridors} corridors`,
     `${r.notes} notes`,
   ];
   let msg = `Imported ${parts.join(", ")}.`;

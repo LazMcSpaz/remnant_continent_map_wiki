@@ -90,9 +90,9 @@ pixel-hunting between overlapping features.
   one blockade closes the whole named route — shown by a red dot in the list and
   a banner in the panel.
 
-> Note: route breaks and corridors are not yet part of Save/Export (that bundle
-> currently covers features, factions, world settings, terrain, and notes).
-> Worth adding to the snapshot next.
+The whole route system — segments, classes, breaks, and corridors — is included
+in Save / Export and restored on Import (ids remapped, breaks re-snapped onto
+their routes, corridor membership rebuilt).
 
 ## Derived climate cascade (Phase 2)
 
@@ -170,7 +170,7 @@ Header buttons (when a backend is configured):
 
 - **Save** — download the whole authored layer as a `.json` snapshot: a GeoJSON
   FeatureCollection (each feature tagged with `rcLayer`) plus a state blob for
-  factions, travel modes, world settings, and notes.
+  factions, travel modes, world settings, notes, route breaks, and corridors.
 - **Export GeoJSON** — download just the spatial features as a plain `.geojson`
   for other GIS tools.
 - **Import** — load a snapshot file; features are **appended** to the current
