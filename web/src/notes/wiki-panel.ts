@@ -16,6 +16,8 @@ import {
 } from "../layers/features";
 import type { NetworkGraph } from "../derived/network-graph";
 import { edgeTravelHours } from "../derived/network-graph";
+import type { CityResources } from "../derived/resources";
+import { RESOURCE_KINDS, type ResourceKind } from "../derived/resources";
 import type { Note } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
 
@@ -35,6 +37,8 @@ export interface WikiHost {
   getGraph(): NetworkGraph;
   /** Derived climate at a location (recomputed from authored inputs). */
   getClimate(detail: LocationDetail): LocationClimate | null;
+  /** Derived resource baselines + pins for a location. */
+  getResources(detail: LocationDetail): CityResources | null;
   /** Fly to and select another location, re-opening the panel on it. */
   navigateTo(id: string): void;
   /** Reload authored data + rebuild the graph after an edit. */
@@ -66,8 +70,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
   for (const c of children) node.append(typeof c === "string" ? document.createTextNode(c) : c);
   return node;
 }
-
-const RESOURCE_KEYS = ["food", "water", "energy", "production"] as const;
 
 function fmtNumber(n: number): string {
   return n.toLocaleString();
@@ -172,65 +174,112 @@ function renderPopulation(hostEl: HTMLElement, ctx: RenderCtx): void {
   view();
 }
 
-// --- Resources (editable bars) ----------------------------------------------
+// --- Resources (derived baselines, overrides shown as pins) -----------------
 
 function renderResources(hostEl: HTMLElement, ctx: RenderCtx): void {
   const { detail, host, panel } = ctx;
-  const view = () => {
-    const entries = Object.entries(detail.resources);
-    if (entries.length === 0) {
-      hostEl.replaceChildren(
-        emptyNote("No resource values set. These will also be derivable from geography (Phase 2)."),
-      );
-    } else {
-      const bars = el("div", { className: "wiki-bars" });
-      for (const [key, value] of entries) {
-        const fill = el("div", { className: "wiki-bar-fill" });
-        fill.style.width = `${Math.max(0, Math.min(100, value))}%`;
-        bars.append(
-          el("div", { className: "wiki-bar-row" }, [
-            el("span", { className: "wiki-bar-label" }, [titleCase(key)]),
-            el("div", { className: "wiki-bar" }, [fill]),
-            el("span", { className: "wiki-bar-val" }, [String(value)]),
-          ]),
-        );
-      }
-      hostEl.replaceChildren(bars);
-      hostEl.append(el("p", { className: "wiki-muted" }, ["Override values (0–100). Pinned as authored."]));
-    }
-    if (host.canEdit()) hostEl.append(editButton(edit));
+  const res = host.getResources(detail);
+
+  if (!res) {
+    hostEl.replaceChildren(
+      emptyNote("No coordinates — resources are derived from the terrain beneath a city."),
+    );
+    return;
+  }
+  if (res.regionName == null && !RESOURCE_KINDS.some((k) => res.values[k].isPinned)) {
+    hostEl.replaceChildren(
+      emptyNote("No terrain region covers this city, so there is no geographic baseline. Draw/extend a terrain region, or pin values below."),
+    );
+    if (host.canEdit()) hostEl.append(editButton(() => editPins()));
+    return;
+  }
+
+  /** Persist the pin map (resource_overrides), then reload + recompute. */
+  const commitPins = async (pins: Record<string, number>) => {
+    await updateLocationResources(detail.id, pins);
+    await host.reloadData();
+    panel.rerenderActive();
   };
 
-  const edit = () => {
-    const inputs = new Map<string, HTMLInputElement>();
+  const view = () => {
+    hostEl.replaceChildren();
+    if (res.regionName) {
+      hostEl.append(
+        el("p", { className: "wiki-muted" }, [`Baselines derived from ${res.regionName}.`]),
+      );
+    }
+    const bars = el("div", { className: "wiki-bars" });
+    for (const kind of RESOURCE_KINDS) {
+      const v = res.values[kind];
+      // Bar shows the effective value; baseline tick shown when a pin overrides it.
+      const fill = el("div", { className: "wiki-bar-fill" });
+      fill.style.width = `${Math.max(0, Math.min(100, v.effective))}%`;
+      if (v.isPinned) fill.classList.add("wiki-bar-pinned");
+      const bar = el("div", { className: "wiki-bar" }, [fill]);
+      if (v.isPinned && v.baseline != null) {
+        const tick = el("div", { className: "wiki-bar-tick" });
+        tick.style.left = `${Math.max(0, Math.min(100, v.baseline))}%`;
+        tick.title = `geographic baseline ${v.baseline}`;
+        bar.append(tick);
+      }
+      const valLabel = v.isPinned
+        ? `${v.effective} 📌`
+        : v.baseline == null ? "—" : String(v.effective);
+      bars.append(
+        el("div", { className: "wiki-bar-row" }, [
+          el("span", { className: "wiki-bar-label" }, [titleCase(kind)]),
+          bar,
+          el("span", { className: "wiki-bar-val" }, [valLabel]),
+        ]),
+      );
+    }
+    hostEl.append(bars);
+
+    const anyPinned = RESOURCE_KINDS.some((k) => res.values[k].isPinned);
+    hostEl.append(
+      el("p", { className: "wiki-muted" }, [
+        anyPinned
+          ? "📌 = pinned override (survives recompute). Tick marks the geographic baseline."
+          : "Values derived from geography. Pin any to override (survives recompute).",
+      ]),
+    );
+    if (host.canEdit()) hostEl.append(editButton(editPins));
+  };
+
+  const editPins = () => {
+    const inputs = new Map<ResourceKind, HTMLInputElement>();
     const rows: HTMLElement[] = [];
-    for (const key of RESOURCE_KEYS) {
-      const f = textField(titleCase(key), detail.resources[key]?.toString() ?? "", "number");
+    for (const kind of RESOURCE_KINDS) {
+      const v = res.values[kind];
+      const placeholder = v.baseline == null ? "—" : `baseline ${v.baseline}`;
+      const f = textField(titleCase(kind), v.pinned?.toString() ?? "", "number");
       f.input.min = "0";
       f.input.max = "100";
-      inputs.set(key, f.input);
+      f.input.placeholder = placeholder;
+      inputs.set(kind, f.input);
       rows.push(f.row);
     }
     hostEl.replaceChildren(
+      el("p", { className: "wiki-muted" }, ["Enter a value to pin it; leave blank to use the geographic baseline."]),
       ...rows,
       saveCancel(
         async () => {
-          const next: Record<string, number> = {};
-          for (const [key, input] of inputs) {
+          const pins: Record<string, number> = {};
+          for (const [kind, input] of inputs) {
             const raw = input.value.trim();
-            if (raw === "") continue;
+            if (raw === "") continue; // blank = unpinned → falls back to baseline
             const n = Number(raw);
-            if (Number.isFinite(n)) next[key] = Math.max(0, Math.min(100, Math.round(n)));
+            if (Number.isFinite(n)) pins[kind] = Math.max(0, Math.min(100, Math.round(n)));
           }
-          await updateLocationResources(detail.id, next);
-          await host.reloadData();
-          panel.rerenderActive();
+          await commitPins(pins);
         },
         view,
         host,
       ),
     );
+    inputs.get("food")?.focus();
   };
+
   view();
 }
 

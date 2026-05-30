@@ -86,6 +86,17 @@ function pointInMultiPolygon(pt: [number, number], geom: TerrainRegionGeo["geome
   return false;
 }
 
+/** The terrain region containing a point, or null when none covers it. */
+export function regionAt(
+  point: [number, number],
+  regions: TerrainRegionGeo[],
+): TerrainRegionGeo | null {
+  for (const r of regions) {
+    if (pointInMultiPolygon(point, r.geometry)) return r;
+  }
+  return null;
+}
+
 /**
  * Elevation (m) sampled at a point from the terrain region that contains it,
  * or 0 (sea level) when no region covers it. This is what makes a city's
@@ -97,12 +108,8 @@ export function sampleElevation(
   point: [number, number],
   regions: TerrainRegionGeo[],
 ): number {
-  for (const r of regions) {
-    if (r.elevation_m != null && pointInMultiPolygon(point, r.geometry)) {
-      return r.elevation_m;
-    }
-  }
-  return 0;
+  const r = regionAt(point, regions);
+  return r?.elevation_m ?? 0;
 }
 
 export interface ClimateInputs {

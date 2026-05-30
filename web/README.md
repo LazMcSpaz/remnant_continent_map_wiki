@@ -106,8 +106,11 @@ gets a selection halo. Tabs (arrow keys navigate the tablist; Esc closes):
 
 - **Overview** — type, new/old-world names, faction, coordinates. *Editable.*
 - **Population** — authored population stat. *Editable.*
-- **Resources** — `resource_overrides` as 0–100 bars (Phase 2 will also derive
-  these from geography; overrides pin them). *Editable.*
+- **Resources** — **derived from geography** (food from crop suitability, water
+  from surface water, energy from wind+solar, production from buildable land),
+  with `resource_overrides` shown as **pins** (📌) that override the baseline and
+  survive recompute. A baseline tick marks where geography sits under a pin.
+  Edit to pin/unpin; blank = use the baseline. *Recomputes with terrain/season.*
 - **Connections** — routes touching this location, from the derived network
   graph, with length, travel time, and intact/damaged/severed status. Rows that
   lead to another city are **clickable** — they fly to and open that city.

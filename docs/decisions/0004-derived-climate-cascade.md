@@ -81,3 +81,24 @@ flow *downstream* into derived data, which surfaced cascade requirements:
   PostgREST UPDATE under existing RLS; only geometry uses the RPC.
 - **Single-selection UX:** opening the terrain panel closes the city panel and
   vice-versa; terrain click ignores clicks that also hit a city marker above it.
+
+## Addendum — derived city resource baselines (overrides as pins)
+
+`src/derived/resources.ts` extends the cascade to the README's resource model:
+a city's food/water/energy/production are **derived from the terrain region
+beneath it** plus the climate, and `locations.resource_overrides` act as
+**pins** over those baselines.
+
+- **food** = crop suitability at the city (warmth × soil × water × land cover);
+  **water** = surface water; **energy** = mean(wind, solar) exposure;
+  **production** = buildable land (land cover × gentle-slope bonus).
+- `effective = pinned override ?? geographic baseline`. A pin survives
+  recompute and is rendered as authored (amber bar + 📌), with a tick marking
+  where the baseline sits beneath it — the README's pin concept made literal.
+- Cascade: editing terrain or scrubbing the season moves the baselines; pins
+  hold until the author clears them (blank field = unpinned → baseline).
+- Seed data corrected (migration 0010): the early arbitrary full overrides on
+  every city are cleared so baselines show, keeping one deliberate pin —
+  Denvar's fusion energy, the README's own override example.
+- No schema change: baselines are computed at runtime; pins reuse the existing
+  `resource_overrides` jsonb and its `updateLocationResources` write path.

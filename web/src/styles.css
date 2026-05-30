@@ -430,6 +430,7 @@ body {
   font-size: 0.8rem;
 }
 .wiki-bar {
+  position: relative;
   height: 0.55rem;
   background: var(--bg);
   border-radius: 999px;
@@ -439,10 +440,24 @@ body {
   height: 100%;
   background: var(--accent);
 }
+/* Pinned (authored override) reads differently from a geographic baseline. */
+.wiki-bar-fill.wiki-bar-pinned {
+  background: #ffd166;
+}
+/* Tick marking where the geographic baseline sits under a pin. */
+.wiki-bar-tick {
+  position: absolute;
+  top: -1px;
+  width: 2px;
+  height: calc(100% + 2px);
+  background: var(--text);
+  opacity: 0.7;
+}
 .wiki-bar-val {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .wiki-conn-list {

@@ -17,6 +17,7 @@ import { ClimateOverlay } from "./derived/climate-overlay";
 import { mountClimateControl } from "./derived/climate-control";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
 import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
+import { deriveCityResources } from "./derived/resources";
 import { updateWorldSettings } from "./layers/features";
 
 const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
@@ -93,6 +94,12 @@ async function boot(): Promise<void> {
           season: inp.season,
           seasonLabel: seasonName(inp.season),
         };
+      },
+      getResources: (detail) => {
+        if (!detail.lngLat) return null;
+        const inp = climateInputs(data.worldSettings);
+        const overrides = (detail.resources ?? {}) as Record<string, number>;
+        return deriveCityResources(detail.lngLat, overrides, data.terrainRegions, inp);
       },
       canEdit: () => hasBackend(),
       setStatus,
