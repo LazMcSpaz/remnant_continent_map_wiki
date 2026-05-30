@@ -56,6 +56,20 @@ body {
   padding: 0.05rem 0.5rem;
 }
 
+.name-toggle {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+.name-toggle:hover {
+  border-color: var(--accent);
+}
+
 #status {
   margin-left: auto;
   font-size: 0.8rem;

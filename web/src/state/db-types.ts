@@ -108,3 +108,40 @@ export interface Note extends Timestamps {
   tags: string[];
   links: string[];
 }
+
+// --- GeoJSON view rows (migration 0002) ------------------------------------
+// These *_geojson views expose `geom` as GeoJSON jsonb so PostgREST returns
+// usable geometry instead of WKB hex. One row per feature.
+
+export interface LocationGeo {
+  id: Uuid;
+  geometry: Point | Polygon;
+  name: string;
+  old_world_name: string | null;
+  type: string;
+  faction_id: Uuid | null;
+  resource_overrides: Json;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
+
+export interface RouteGeo {
+  id: Uuid;
+  geometry: LineString;
+  kind: RouteKind;
+  owner_faction_id: Uuid | null;
+  status: RouteStatus;
+  mode_ids: Uuid[];
+  purpose: string | null;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
+
+export interface TerritoryGeo {
+  id: Uuid;
+  geometry: MultiPolygon;
+  faction_id: Uuid;
+  style: Json;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
