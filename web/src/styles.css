@@ -16,6 +16,13 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute must win over our explicit `display` rules (e.g. the
+   login gate's `display:grid`, panels' `display:flex`). Without this, calling
+   `el.hidden = true` does nothing and the element stays visible. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -140,6 +147,19 @@ body {
 /* Tone MapLibre's default controls toward the dark shell. */
 .maplibregl-ctrl-attrib {
   font-size: 0.7rem;
+}
+
+/* City-name labels (HTML markers, not glyph symbols). */
+.map-label {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #e7ecf3;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow:
+    0 0 2px #0e1116, 0 0 2px #0e1116, 0 0 3px #0e1116, 0 1px 2px #0e1116;
+  transform: translateZ(0);
 }
 
 /* ---- Climate control (derived overlay) ----------------------------------- */

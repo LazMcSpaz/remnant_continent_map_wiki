@@ -23,7 +23,6 @@ const LAYER = {
   routeLineDashed: "rc-route-line-dashed",
   locationCircle: "rc-location-circle",
   locationHighlight: "rc-location-highlight",
-  locationLabel: "rc-location-label",
 } as const;
 
 /** Land-cover fill expression for the authored terrain area layer. */
@@ -156,40 +155,50 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     },
   });
 
-  // Labels: toggle between new-world and old-world names.
-  map.addLayer({
-    id: LAYER.locationLabel,
-    type: "symbol",
-    source: SRC.locations,
-    layout: {
-      "text-field": nameField(nameMode),
-      "text-size": 12,
-      "text-offset": [0, 1.2],
-      "text-anchor": "top",
-      "text-font": ["Open Sans Regular", "Noto Sans Regular"],
-    },
-    paint: {
-      "text-color": "#e7ecf3",
-      "text-halo-color": "#0e1116",
-      "text-halo-width": 1.2,
-    },
-  });
+  // Labels are HTML markers (see renderLabels), not a glyph symbol layer —
+  // avoids any external font/glyphs dependency on the raster style.
+  renderLabels(map, data, nameMode);
 
   wireInteractions(map);
 }
 
-function nameField(mode: NameMode): maplibregl.ExpressionSpecification {
-  // Fall back to the other name when the preferred one is absent.
-  return mode === "old"
-    ? ["coalesce", ["get", "oldWorldName"], ["get", "name"]]
-    : ["get", "name"];
+// --- City labels as HTML markers -------------------------------------------
+// A glyph-based symbol layer needs a `glyphs` font server, which is a fragile
+// external dependency on the raster fallback style. With only a handful of
+// places, lightweight HTML markers are simpler and dependency-free.
+
+let labelMarkers: maplibregl.Marker[] = [];
+let labelMode: NameMode = "new";
+
+function applyLabelText(el: HTMLElement, mode: NameMode): void {
+  const name = el.dataset.name ?? "";
+  const old = el.dataset.old ?? "";
+  el.textContent = mode === "old" ? old || name : name;
+}
+
+/** Rebuild the city-name markers from the current locations + name mode. */
+export function renderLabels(map: MlMap, data: FeatureData, mode: NameMode): void {
+  labelMode = mode;
+  for (const m of labelMarkers) m.remove();
+  labelMarkers = [];
+  for (const f of data.locations.features) {
+    if (f.geometry.type !== "Point") continue;
+    const el = document.createElement("div");
+    el.className = "map-label";
+    el.dataset.name = f.properties.name;
+    el.dataset.old = f.properties.oldWorldName ?? "";
+    applyLabelText(el, mode);
+    const marker = new maplibregl.Marker({ element: el, anchor: "top", offset: [0, 8] })
+      .setLngLat(f.geometry.coordinates as [number, number])
+      .addTo(map);
+    labelMarkers.push(marker);
+  }
 }
 
 /** Switch place labels between fiction and real-world names without a reload. */
-export function setNameMode(map: MlMap, mode: NameMode): void {
-  if (map.getLayer(LAYER.locationLabel)) {
-    map.setLayoutProperty(LAYER.locationLabel, "text-field", nameField(mode));
-  }
+export function setNameMode(_map: MlMap, mode: NameMode): void {
+  labelMode = mode;
+  for (const marker of labelMarkers) applyLabelText(marker.getElement(), mode);
 }
 
 /** Replace data in place (after an edit/reload) without re-adding layers. */
@@ -198,6 +207,7 @@ export function updateFeatureData(map: MlMap, data: FeatureData): void {
   (map.getSource(SRC.territories) as GeoJSONSource | undefined)?.setData(data.territories);
   (map.getSource(SRC.routes) as GeoJSONSource | undefined)?.setData(data.routes);
   (map.getSource(SRC.locations) as GeoJSONSource | undefined)?.setData(data.locations);
+  renderLabels(map, data, labelMode); // rebuild HTML name markers
 }
 
 function wireInteractions(map: MlMap): void {

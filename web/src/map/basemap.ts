@@ -12,8 +12,6 @@ import { MIDWEST, readMapConfig, type MapConfig } from "../config";
 function rasterStyle(cfg: MapConfig): StyleSpecification {
   return {
     version: 8,
-    // Required so symbol/text layers (city labels) can render on this style.
-    glyphs: cfg.glyphsUrl,
     sources: {
       osm: {
         type: "raster",
