@@ -19,6 +19,7 @@ const ROWS: Row[] = [
   { id: "terrain", label: "Terrain", swatch: "#7d9b4e", on: true },
   { id: "territories", label: "Territories", swatch: "#6ea8fe", on: true },
   { id: "routes", label: "Routes", swatch: "#e0af68", on: true },
+  { id: "breaks", label: "Route breaks", swatch: "#e85d3a", on: true },
   { id: "labels", label: "City names", swatch: "#e7ecf3", on: true },
 ];
 

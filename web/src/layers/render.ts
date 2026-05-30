@@ -10,6 +10,7 @@ export const SRC = {
   terrain: "rc-terrain",
   territories: "rc-territories",
   routes: "rc-routes",
+  breaks: "rc-breaks",
   locations: "rc-locations",
 } as const;
 
@@ -22,6 +23,7 @@ const LAYER = {
   routeLine: "rc-route-line",
   routeLineDashed: "rc-route-line-dashed",
   routeHighlight: "rc-route-highlight",
+  breakPoints: "rc-break-points",
   locationCircle: "rc-location-circle",
   locationHighlight: "rc-location-highlight",
 } as const;
@@ -106,12 +108,19 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
   const routeWidth: maplibregl.ExpressionSpecification = [
     "match", ["get", "routeClass"], "major", 4, "minor", 2.5, "secret", 1.5, 2.5,
   ];
-  // Secret routes are dimmer; destroyed dimmer still.
+  // Closed/destroyed routes are dim; secret routes a bit faint.
   const routeOpacity: maplibregl.ExpressionSpecification = [
     "case",
-    ["==", ["get", "status"], "destroyed"], 0.35,
+    ["any", ["==", ["get", "status"], "destroyed"], ["get", "closed"]], 0.35,
     ["==", ["get", "routeClass"], "secret"], 0.6,
     1,
+  ];
+  // Solid only when intact AND open; dashed when not-intact OR closed by a break.
+  const openIntact: maplibregl.ExpressionSpecification = [
+    "all", ["==", ["get", "status"], "intact"], ["!", ["get", "closed"]],
+  ];
+  const brokenOrDamaged: maplibregl.ExpressionSpecification = [
+    "any", ["!=", ["get", "status"], "intact"], ["get", "closed"],
   ];
 
   // Selection halo for routes, drawn beneath the route lines.
@@ -127,7 +136,7 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     id: LAYER.routeLine,
     type: "line",
     source: SRC.routes,
-    filter: ["==", ["get", "status"], "intact"],
+    filter: openIntact,
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": routeColor, "line-width": routeWidth, "line-opacity": routeOpacity },
   });
@@ -135,7 +144,7 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     id: LAYER.routeLineDashed,
     type: "line",
     source: SRC.routes,
-    filter: ["!=", ["get", "status"], "intact"],
+    filter: brokenOrDamaged,
     layout: { "line-cap": "butt", "line-join": "round" },
     paint: {
       "line-color": routeColor,
@@ -174,6 +183,27 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     },
   });
 
+  // Break markers, on top of routes — colored by kind, dimmed when lifted.
+  map.addSource(SRC.breaks, { type: "geojson", data: data.breaks });
+  map.addLayer({
+    id: LAYER.breakPoints,
+    type: "circle",
+    source: SRC.breaks,
+    paint: {
+      "circle-radius": 5,
+      "circle-color": [
+        "match", ["get", "kind"],
+        "natural", "#8a7d6b",
+        "blockade", "#e85d3a",
+        "toll", "#e0af68",
+        "#ffffff",
+      ],
+      "circle-opacity": ["case", ["get", "active"], 1, 0.3],
+      "circle-stroke-color": "#0e1116",
+      "circle-stroke-width": 1.5,
+    },
+  });
+
   // Labels are HTML markers (see renderLabels), not a glyph symbol layer —
   // avoids any external font/glyphs dependency on the raster style.
   renderLabels(map, data, nameMode);
@@ -191,11 +221,12 @@ let labelMode: NameMode = "new";
 let labelsVisible = true;
 
 /** Feature groups that can be toggled as whole layers from the layers panel. */
-export type LayerGroup = "terrain" | "territories" | "routes" | "labels";
+export type LayerGroup = "terrain" | "territories" | "routes" | "breaks" | "labels";
 const GROUP_LAYERS: Record<LayerGroup, string[]> = {
   terrain: [LAYER.terrainFill, LAYER.terrainLine, LAYER.terrainHighlight],
   territories: [LAYER.territoryFill, LAYER.territoryLine],
   routes: [LAYER.routeLine, LAYER.routeLineDashed, LAYER.routeHighlight],
+  breaks: [LAYER.breakPoints],
   labels: [],
 };
 
@@ -247,6 +278,7 @@ export function updateFeatureData(map: MlMap, data: FeatureData): void {
   (map.getSource(SRC.terrain) as GeoJSONSource | undefined)?.setData(data.terrain);
   (map.getSource(SRC.territories) as GeoJSONSource | undefined)?.setData(data.territories);
   (map.getSource(SRC.routes) as GeoJSONSource | undefined)?.setData(data.routes);
+  (map.getSource(SRC.breaks) as GeoJSONSource | undefined)?.setData(data.breaks);
   (map.getSource(SRC.locations) as GeoJSONSource | undefined)?.setData(data.locations);
   renderLabels(map, data, labelMode); // rebuild HTML name markers
 }

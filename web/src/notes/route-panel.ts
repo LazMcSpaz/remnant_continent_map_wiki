@@ -5,7 +5,7 @@
 
 import type { RouteProps } from "../layers/features";
 import { updateRouteFields, loadNotesFor, addNote, deleteNote } from "../layers/features";
-import type { Note } from "../state/db-types";
+import type { Note, RouteBreakGeo } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
 
 export interface RouteDetail {
@@ -16,6 +16,11 @@ export interface RouteDetail {
 
 export interface RouteHost {
   getRoute(id: string): RouteDetail | undefined;
+  getBreaks(routeId: string): RouteBreakGeo[];
+  /** Arm placement: the next map click drops a break (kind) on this route. */
+  beginPlaceBreak(routeId: string, kind: string): void;
+  setBreakActive(id: string, active: boolean): Promise<void>;
+  deleteBreak(id: string): Promise<void>;
   reloadData(): Promise<void>;
   canEdit(): boolean;
   setStatus(text: string, kind?: "info" | "error"): void;
@@ -24,6 +29,7 @@ export interface RouteHost {
 const CLASSES = ["major", "minor", "secret"];
 const STATUSES = ["intact", "damaged", "destroyed"];
 const KINDS = ["road", "rail", "trail"];
+const BREAK_KINDS = ["natural", "blockade", "toll"];
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -114,8 +120,69 @@ export class RoutePanel {
       ]),
     );
 
+    if (d.props.closed) {
+      this.bodyEl.append(
+        el("p", { className: "route-closed-banner" }, ["⛔ Closed by an active break."]),
+      );
+    }
     if (this.host.canEdit()) this.bodyEl.append(this.editForm(d.props));
+    this.bodyEl.append(this.breaksSection(this.currentId));
     this.bodyEl.append(this.notesSection(this.currentId));
+  }
+
+  private breaksSection(routeId: string): HTMLElement {
+    const wrap = el("div", { className: "terra-form" }, [el("h3", { className: "terra-section" }, ["Breaks"])]);
+    const breaks = this.host.getBreaks(routeId);
+
+    if (breaks.length === 0) {
+      wrap.append(el("p", { className: "wiki-muted" }, ["No breaks. The route is open end-to-end."]));
+    } else {
+      const list = el("div", { className: "break-list" });
+      for (const b of breaks) {
+        const toggle = el("input", { type: "checkbox", checked: b.active, title: "Active (closes route)" });
+        toggle.addEventListener("change", () => {
+          toggle.disabled = true;
+          this.host.setBreakActive(b.id, toggle.checked)
+            .then(() => this.host.reloadData())
+            .then(() => this.refresh())
+            .catch((err: unknown) => {
+              this.host.setStatus(err instanceof Error ? err.message : String(err), "error");
+              toggle.disabled = false;
+            });
+        });
+        const del = el("button", { type: "button", className: "wiki-note-del", title: "Delete break" }, ["×"]);
+        del.addEventListener("click", () => {
+          del.disabled = true;
+          this.host.deleteBreak(b.id)
+            .then(() => this.host.reloadData())
+            .then(() => this.refresh())
+            .catch((err: unknown) => {
+              this.host.setStatus(err instanceof Error ? err.message : String(err), "error");
+              del.disabled = false;
+            });
+        });
+        list.append(
+          el("div", { className: "break-row" }, [
+            toggle,
+            el("span", { className: `wiki-tag break-${b.kind}` }, [b.kind]),
+            el("span", { className: "wiki-muted" }, [b.active ? "active" : "lifted"]),
+            del,
+          ]),
+        );
+      }
+      wrap.append(list);
+    }
+
+    if (this.host.canEdit()) {
+      const kind = el("select", { className: "terra-input" });
+      for (const k of BREAK_KINDS) kind.append(el("option", { value: k }, [k]));
+      const place = el("button", { type: "button", className: "wiki-btn" }, ["Place break"]);
+      place.addEventListener("click", () => {
+        this.host.beginPlaceBreak(routeId, kind.value);
+      });
+      wrap.append(el("div", { className: "break-add" }, [kind, place]));
+    }
+    return wrap;
   }
 
   private editForm(p: RouteProps): HTMLElement {

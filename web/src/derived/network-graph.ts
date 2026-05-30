@@ -31,6 +31,8 @@ export interface GraphEdge {
   speed: number; // km/h, by route kind (placeholder until travel_modes wired)
   capacity: number; // placeholder; Phase 2 derives from kind/status
   status: RouteStatus;
+  /** Closed by an active break — impassable even when status is intact. */
+  closed: boolean;
   /** Geodesic length in kilometers. */
   lengthKm: number;
 }
@@ -150,6 +152,7 @@ export function buildNetworkGraph(
       speed: (KIND_SPEED[props.kind] ?? 50) * (CLASS_SPEED[props.routeClass] ?? 1),
       capacity: props.routeClass === "major" ? 3 : props.routeClass === "minor" ? 2 : 1,
       status: props.status,
+      closed: props.closed,
       lengthKm: lineLengthKm(coords),
     });
   }
@@ -163,7 +166,7 @@ export function buildNetworkGraph(
  * travel-time readout routes/UI will surface.
  */
 export function edgeTravelHours(edge: GraphEdge): number | null {
-  if (edge.status === "destroyed") return null;
+  if (edge.status === "destroyed" || edge.closed) return null; // severed
   const speed = edge.speed * (edge.status === "damaged" ? 0.5 : 1);
   if (speed <= 0) return null;
   return edge.lengthKm / speed;

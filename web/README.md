@@ -76,8 +76,14 @@ pixel-hunting between overlapping features.
   status, kind, and purpose; see derived length + travel time; read/add/delete
   notes. Class feeds the network graph (major = faster/higher capacity, secret =
   slower) and the on-map styling (major thicker, secret fainter).
-- Breaks (located barriers that sever a route) and named route groups/corridors
-  are planned follow-ups.
+- **Breaks** — in a route's panel, choose a kind (**natural / blockade / toll**)
+  and "Place break", then click the spot on the route; the point snaps onto the
+  line. An active break **closes** the route — it's severed in the network graph
+  (travel time → severed) and drawn dashed/faded, without deleting the route.
+  Breaks can be lifted (made inactive) or deleted, and show as kind-colored dots
+  on the line (toggle via the "Route breaks" layer).
+- Named route groups/corridors (which will aggregate member breaks to show
+  closure) are the next follow-up.
 
 ## Derived climate cascade (Phase 2)
 

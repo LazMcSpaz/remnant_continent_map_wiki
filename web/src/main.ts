@@ -6,6 +6,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import type { Map as MlMap } from "maplibre-gl";
+import type { Point } from "geojson";
 import { createBasemap } from "./map/basemap";
 import { loadFeatures, hasBackend, type FeatureData } from "./layers/features";
 import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, onTerrainClick, setSelectedTerrain, onRouteClick, setSelectedRoute, type NameMode } from "./layers/render";
@@ -22,6 +23,7 @@ import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
 import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
 import { deriveCityResources } from "./derived/resources";
+import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
 
 const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
@@ -114,6 +116,10 @@ async function boot(): Promise<void> {
     };
     const wiki = new WikiPanel(panelMount, host, () => setSelectedLocation(map, null));
 
+    // While placing a break, the next map click is consumed by placement — the
+    // normal select handlers must ignore it.
+    let placingBreak = false;
+
     /** Clear every panel + selection highlight (before opening a new one). */
     const clearSelections = (): void => {
       wiki.close();
@@ -126,6 +132,7 @@ async function boot(): Promise<void> {
 
     /** Select a location: highlight it, ease toward it, and open the panel. */
     const selectLocation = (id: string): void => {
+      if (placingBreak) return;
       const detail = data.locationDetails.get(id);
       if (!detail) return;
       clearSelections();
@@ -149,13 +156,34 @@ async function boot(): Promise<void> {
     };
     const routeHost: RouteHost = {
       getRoute: findRoute,
+      getBreaks: (routeId) => data.routeBreaks.filter((b) => b.route_id === routeId),
+      beginPlaceBreak: (routeId, kind) => {
+        placingBreak = true;
+        setStatus("Click the spot on the route to place the break.");
+        map.getCanvas().style.cursor = "crosshair";
+        map.once("click", (e) => {
+          const point: Point = { type: "Point", coordinates: [e.lngLat.lng, e.lngLat.lat] };
+          addRouteBreak(routeId, point, kind)
+            .then(async () => {
+              applyData(await loadFeatures());
+              setStatus("Break placed.");
+            })
+            .catch((err: unknown) => setStatus(err instanceof Error ? err.message : String(err), "error"))
+            .finally(() => {
+              placingBreak = false;
+              map.getCanvas().style.cursor = "";
+            });
+        });
+      },
+      setBreakActive: (id, active) => setRouteBreakActive(id, active),
+      deleteBreak: (id) => deleteRouteBreak(id),
       reloadData: async () => applyData(await loadFeatures()),
       canEdit: () => hasBackend(),
       setStatus,
     };
     const routePanel = new RoutePanel(panelMount, routeHost, () => setSelectedRoute(map, null));
     const selectRoute = (id: string): void => {
-      if (!findRoute(id)) return;
+      if (placingBreak || !findRoute(id)) return;
       clearSelections();
       setSelectedRoute(map, id);
       routePanel.open(id);
@@ -174,7 +202,7 @@ async function boot(): Promise<void> {
     const terrainPanel = new TerrainPanel(panelMount, terrainHost, () => setSelectedTerrain(map, null));
 
     const selectTerrain = (id: string): void => {
-      if (!data.terrainRegions.some((r) => r.id === id)) return;
+      if (placingBreak || !data.terrainRegions.some((r) => r.id === id)) return;
       clearSelections();
       setSelectedTerrain(map, id);
       terrainPanel.open(id);

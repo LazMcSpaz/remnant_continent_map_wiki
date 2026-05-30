@@ -127,6 +127,20 @@ export interface LocationGeo {
 }
 
 export type RouteClass = "major" | "minor" | "secret";
+export type BreakKind = "natural" | "blockade" | "toll";
+
+/** A located barrier on a route (migration 0012). */
+export interface RouteBreakGeo {
+  id: Uuid;
+  route_id: Uuid;
+  geometry: Point;
+  position: number | null;
+  kind: BreakKind;
+  label: string | null;
+  active: boolean;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
 
 export interface RouteGeo {
   id: Uuid;
