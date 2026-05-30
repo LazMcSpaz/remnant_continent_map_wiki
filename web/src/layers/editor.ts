@@ -33,6 +33,8 @@ export interface EditorOptions {
   onStatus: (text: string, kind?: "info" | "error") => void;
   /** Faction id to assign to newly drawn territories (required by schema). */
   defaultFactionId: () => string | null;
+  /** Launch the multi-step route wizard (instead of free-drawing a route). */
+  onRouteWizard?: () => void;
 }
 
 export class FeatureEditor {
@@ -160,6 +162,13 @@ export function mountEditorToolbar(
     btn.className = "tool-btn";
     btn.textContent = label;
     btn.addEventListener("click", () => {
+      // +Route launches the multi-step wizard rather than free-drawing.
+      if (tool === "route" && opts.onRouteWizard) {
+        editor.setTool("select");
+        refresh();
+        opts.onRouteWizard();
+        return;
+      }
       editor.setTool(editor.getTool() === tool ? "select" : tool);
       refresh();
     });

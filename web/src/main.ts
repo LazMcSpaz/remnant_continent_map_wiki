@@ -21,7 +21,9 @@ import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
 import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-panel";
 import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
-import { createRouteGroup, addRouteGroupMember } from "./layers/features";
+import { createRouteGroup, addRouteGroupMember, createRoute } from "./layers/features";
+import { RouteWizard } from "./layers/route-wizard";
+import type { Position } from "geojson";
 import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
 import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
@@ -124,6 +126,8 @@ async function boot(): Promise<void> {
     // route clicks add to that corridor instead of opening the route panel.
     let placingBreak = false;
     let addingToGroupId: string | null = null;
+    let wizard: RouteWizard | null = null;
+    const busy = () => placingBreak || addingToGroupId !== null || (wizard?.isActive() ?? false);
 
     /** Clear every panel + selection highlight (before opening a new one). */
     const clearSelections = (): void => {
@@ -139,7 +143,7 @@ async function boot(): Promise<void> {
 
     /** Select a location: highlight it, ease toward it, and open the panel. */
     const selectLocation = (id: string): void => {
-      if (placingBreak || addingToGroupId) return;
+      if (busy()) return;
       const detail = data.locationDetails.get(id);
       if (!detail) return;
       clearSelections();
@@ -190,7 +194,7 @@ async function boot(): Promise<void> {
     };
     const routePanel = new RoutePanel(panelMount, routeHost, () => setSelectedRoute(map, null));
     const selectRoute = (id: string): void => {
-      if (placingBreak || !findRoute(id)) return;
+      if ((placingBreak || (wizard?.isActive() ?? false)) || !findRoute(id)) return;
       // In corridor add-members mode, route clicks add to the corridor instead.
       if (addingToGroupId) {
         const gid = addingToGroupId;
@@ -270,6 +274,42 @@ async function boot(): Promise<void> {
       }
     });
 
+    // Multi-step route creation wizard (launched by the +Route tool button).
+    const MOUNTAIN_ELEV_M = 1500;
+    const STEEP_SLOPE_DEG = 15;
+    wizard = new RouteWizard(map, panelMount, {
+      factions: () => [...data.factions.values()],
+      barrierRings: () => {
+        const rings: Position[][] = [];
+        for (const r of data.terrainRegions) {
+          const isBarrier =
+            r.land_cover === "forest" ||
+            (r.elevation_m ?? 0) >= MOUNTAIN_ELEV_M ||
+            (r.slope_deg ?? 0) >= STEEP_SLOPE_DEG;
+          if (!isBarrier) continue;
+          for (const poly of r.geometry.coordinates) if (poly[0]) rings.push(poly[0]);
+        }
+        return rings;
+      },
+      snapPoints: () => {
+        const pts: Position[] = [];
+        for (const f of data.locations.features) {
+          if (f.geometry.type === "Point") pts.push(f.geometry.coordinates);
+        }
+        for (const f of data.routes.features) {
+          const c = f.geometry.coordinates;
+          if (c.length) {
+            pts.push(c[0]);
+            pts.push(c[c.length - 1]);
+          }
+        }
+        return pts;
+      },
+      createRoute: (geometry, opts) => createRoute(geometry, opts),
+      reloadData: async () => applyData(await loadFeatures()),
+      setStatus,
+    });
+
     // Terrain editor panel. Editing physical inputs cascades into the derived
     // climate: reloadData → recompute → both panels refresh.
     const terrainHost: TerrainHost = {
@@ -282,7 +322,7 @@ async function boot(): Promise<void> {
     const terrainPanel = new TerrainPanel(panelMount, terrainHost, () => setSelectedTerrain(map, null));
 
     const selectTerrain = (id: string): void => {
-      if (placingBreak || addingToGroupId || !data.terrainRegions.some((r) => r.id === id)) return;
+      if (busy() || !data.terrainRegions.some((r) => r.id === id)) return;
       clearSelections();
       setSelectedTerrain(map, id);
       terrainPanel.open(id);
@@ -319,7 +359,7 @@ async function boot(): Promise<void> {
     } else {
       setStatus(summarize(data));
       initSignOut();
-      mountEditor(map, () => data, applyData);
+      mountEditor(map, () => data, applyData, () => wizard?.start());
       mountIO(async () => applyData(await loadFeatures()));
     }
 
@@ -332,7 +372,12 @@ async function boot(): Promise<void> {
 }
 
 /** Mount the editing toolbar; applyData re-renders, rebuilds the graph, etc. */
-function mountEditor(map: MlMap, getData: () => FeatureData, applyData: (d: FeatureData) => void): void {
+function mountEditor(
+  map: MlMap,
+  getData: () => FeatureData,
+  applyData: (d: FeatureData) => void,
+  onRouteWizard: () => void,
+): void {
   const toolbar = document.getElementById("editor-toolbar");
   if (!toolbar) return;
   mountEditorToolbar(map, toolbar, {
@@ -342,6 +387,7 @@ function mountEditor(map: MlMap, getData: () => FeatureData, applyData: (d: Feat
       return first.done ? null : first.value;
     },
     onChange: async () => applyData(await loadFeatures()),
+    onRouteWizard,
   });
 }
 

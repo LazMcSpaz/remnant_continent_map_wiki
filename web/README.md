@@ -69,9 +69,13 @@ pixel-hunting between overlapping features.
 
 ## Routes
 
-- **Drawing** road routes snaps them to real roads via OSRM (between the
-  vertices you click); rail/trail are hand-traced. Configure the routing server
-  with `VITE_OSRM_URL`.
+- **Creating** a route is a guided wizard: **+ Route** → place the **start**
+  then the **end** (clicks snap to nearby cities and route endpoints) → choose
+  **Follow roads** (OSRM road-snapped) or **Landship route** (hover path that
+  routes *around* forest + mountain terrain) → pick the **owning faction**.
+  Landship barriers are terrain regions that are forest, high-elevation
+  (≥1500 m), or steep (≥15°), so landship routing sharpens as you author more
+  terrain. Configure the OSRM server with `VITE_OSRM_URL`.
 - **Click a route** to open its panel: edit class (**major/minor/secret**),
   status, kind, and purpose; see derived length + **travel time**, which always
   computes and updates with the chosen **travel mode** (on foot, caravan,
