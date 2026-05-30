@@ -481,6 +481,38 @@ body {
   flex: 1;
 }
 
+/* Corridors list */
+.corridor-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+}
+.corridor-item:hover {
+  border-color: var(--border);
+  background: var(--bg);
+}
+.corridor-closed-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--error);
+  flex: 0 0 auto;
+}
+.corridor-new {
+  margin-top: 0.3rem;
+  align-self: stretch;
+}
+
 /* ---- Wiki panel (tabbed location details) -------------------------------- */
 .wiki-panel {
   position: absolute;

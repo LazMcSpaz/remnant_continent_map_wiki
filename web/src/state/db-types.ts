@@ -203,3 +203,18 @@ export interface WorldSettingsGeo {
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }
+
+/** A named corridor bundling several route segments (migration 0013). */
+export interface RouteGroup {
+  id: Uuid;
+  name: string;
+  labels: string[];
+  color: string | null;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
+
+export interface RouteGroupMember {
+  group_id: Uuid;
+  route_id: Uuid;
+}

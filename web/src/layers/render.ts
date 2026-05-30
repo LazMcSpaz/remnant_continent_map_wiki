@@ -353,6 +353,15 @@ export function setSelectedRoute(map: MlMap, routeId: string | null): void {
   map.setFilter(LAYER.routeHighlight, ["==", ["get", "id"], routeId ?? "__none__"]);
 }
 
+/** Outline several routes at once (a corridor's members). Empty clears it. */
+export function setHighlightedRoutes(map: MlMap, routeIds: string[]): void {
+  if (!map.getLayer(LAYER.routeHighlight)) return;
+  map.setFilter(
+    LAYER.routeHighlight,
+    routeIds.length ? ["in", ["get", "id"], ["literal", routeIds]] : ["==", ["get", "id"], "__none__"],
+  );
+}
+
 /** Register a handler fired with the terrain region id when its fill is clicked. */
 export function onTerrainClick(map: MlMap, handler: (terrainId: string) => void): void {
   map.on("click", LAYER.terrainFill, (e) => {

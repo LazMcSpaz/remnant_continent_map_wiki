@@ -23,6 +23,8 @@ import type {
   TerritoryGeo,
   TerrainRegionGeo,
   RouteBreakGeo,
+  RouteGroup,
+  RouteGroupMember,
   WorldSettingsGeo,
   Note,
 } from "../state/db-types";
@@ -39,6 +41,9 @@ export interface FeatureData {
   closedRouteIds: Set<string>;
   /** All break rows, for the route panel's per-route break list. */
   routeBreaks: RouteBreakGeo[];
+  /** Named corridors and their members (many-to-many). */
+  routeGroups: RouteGroup[];
+  groupMembers: RouteGroupMember[];
   /**
    * Full per-location detail keyed by id, for the wiki panel. Kept separate
    * from GeoJSON `properties` because MapLibre stringifies nested objects
@@ -137,13 +142,15 @@ export async function loadFeatures(): Promise<FeatureData> {
     breaks: emptyFC<Point, BreakProps>(),
     closedRouteIds: new Set<string>(),
     routeBreaks: [],
+    routeGroups: [],
+    groupMembers: [],
     locationDetails: new Map<string, LocationDetail>(),
     terrainRegions: [],
     worldSettings: null,
   };
   if (!sb) return data;
 
-  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, worldRes] =
+  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes] =
     await Promise.all([
       sb.from("factions").select("*"),
       sb.from("locations_geojson").select("*"),
@@ -151,13 +158,17 @@ export async function loadFeatures(): Promise<FeatureData> {
       sb.from("territories_geojson").select("*"),
       sb.from("terrain_regions_geojson").select("*"),
       sb.from("route_breaks_geojson").select("*"),
+      sb.from("route_groups").select("*"),
+      sb.from("route_group_members").select("*"),
       sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
     ]);
 
-  for (const res of [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes]) {
+  for (const res of [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
     if (res.error) throw new Error(`Supabase load failed: ${res.error.message}`);
   }
   data.worldSettings = (worldRes.data as WorldSettingsGeo | null) ?? null;
+  data.routeGroups = (groupsRes.data ?? []) as RouteGroup[];
+  data.groupMembers = (membersRes.data ?? []) as RouteGroupMember[];
 
   // Breaks: build the closed-route set (any active break closes its route) and
   // the break marker collection.
@@ -337,6 +348,68 @@ export async function deleteRouteBreak(id: string): Promise<void> {
   if (!sb) throw new Error("No backend configured — editing is unavailable.");
   const { error } = await sb.from("route_breaks").delete().eq("id", id);
   if (error) throw new Error(`delete break failed: ${error.message}`);
+}
+
+// --- Route groups (corridors) -----------------------------------------------
+
+/** Create a corridor and attach the given member routes. Returns the new id. */
+export async function createRouteGroup(
+  name: string,
+  routeIds: string[],
+  labels: string[] = [],
+): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { data, error } = await sb
+    .from("route_groups")
+    .insert({ name, labels })
+    .select("id")
+    .single();
+  if (error) throw new Error(`create corridor failed: ${error.message}`);
+  const groupId = (data as { id: string }).id;
+  if (routeIds.length) {
+    const rows = routeIds.map((route_id) => ({ group_id: groupId, route_id }));
+    const { error: mErr } = await sb.from("route_group_members").insert(rows);
+    if (mErr) throw new Error(`add corridor members failed: ${mErr.message}`);
+  }
+  return groupId;
+}
+
+export async function updateRouteGroup(
+  id: string,
+  fields: Partial<{ name: string; labels: string[] }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("route_groups").update(fields).eq("id", id);
+  if (error) throw new Error(`update corridor failed: ${error.message}`);
+}
+
+export async function deleteRouteGroup(id: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("route_groups").delete().eq("id", id);
+  if (error) throw new Error(`delete corridor failed: ${error.message}`);
+}
+
+export async function addRouteGroupMember(groupId: string, routeId: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb
+    .from("route_group_members")
+    .upsert({ group_id: groupId, route_id: routeId });
+  if (error) throw new Error(`add member failed: ${error.message}`);
+}
+
+export async function removeRouteGroupMember(groupId: string, routeId: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb
+    .from("route_group_members")
+    .delete()
+    .eq("group_id", groupId)
+    .eq("route_id", routeId);
+  if (error) throw new Error(`remove member failed: ${error.message}`);
 }
 
 /** Update a route's scalar fields (class, status, kind, purpose). Geometry edits

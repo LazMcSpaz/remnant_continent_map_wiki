@@ -82,8 +82,17 @@ pixel-hunting between overlapping features.
   (travel time → severed) and drawn dashed/faded, without deleting the route.
   Breaks can be lifted (made inactive) or deleted, and show as kind-colored dots
   on the line (toggle via the "Route breaks" layer).
-- Named route groups/corridors (which will aggregate member breaks to show
-  closure) are the next follow-up.
+- **Corridors (route groups)** — the **Corridors** panel (top-left) lists named
+  corridors and has "New corridor": name it, then click route segments to add
+  them (Esc to finish). A corridor's panel shows its derived **total length and
+  end-to-end travel**, its **segments**, labels, and notes. A corridor is marked
+  **closed** if *any* member segment is severed (active break or destroyed) — so
+  one blockade closes the whole named route — shown by a red dot in the list and
+  a banner in the panel.
+
+> Note: route breaks and corridors are not yet part of Save/Export (that bundle
+> currently covers features, factions, world settings, terrain, and notes).
+> Worth adding to the snapshot next.
 
 ## Derived climate cascade (Phase 2)
 

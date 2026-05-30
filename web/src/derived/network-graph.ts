@@ -171,3 +171,40 @@ export function edgeTravelHours(edge: GraphEdge): number | null {
   if (speed <= 0) return null;
   return edge.lengthKm / speed;
 }
+
+export interface GroupAggregate {
+  lengthKm: number;
+  /** Sum of member travel times, or null when the corridor is closed. */
+  travelHours: number | null;
+  /** True if ANY member route is severed — one break closes the corridor. */
+  closed: boolean;
+  memberCount: number;
+  severedCount: number;
+}
+
+/**
+ * Aggregate a corridor's derived state from its member routes. A corridor is
+ * closed if any member is severed (active break or destroyed), and its travel
+ * time is then null — you can't traverse the named route end-to-end.
+ */
+export function aggregateGroup(memberRouteIds: string[], graph: NetworkGraph): GroupAggregate {
+  let lengthKm = 0;
+  let travel = 0;
+  let severed = 0;
+  for (const rid of memberRouteIds) {
+    const edge = graph.edges.find((e) => e.routeId === rid);
+    if (!edge) continue;
+    lengthKm += edge.lengthKm;
+    const h = edgeTravelHours(edge);
+    if (h === null) severed += 1;
+    else travel += h;
+  }
+  const closed = severed > 0;
+  return {
+    lengthKm,
+    travelHours: closed ? null : travel,
+    closed,
+    memberCount: memberRouteIds.length,
+    severedCount: severed,
+  };
+}
