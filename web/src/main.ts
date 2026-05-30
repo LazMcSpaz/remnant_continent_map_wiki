@@ -6,10 +6,11 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import type { Map as MlMap } from "maplibre-gl";
+import type { Point } from "geojson";
 import { createBasemap } from "./map/basemap";
 import { loadFeatures, hasBackend, type FeatureData } from "./layers/features";
-import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, onTerrainClick, setSelectedTerrain, type NameMode } from "./layers/render";
-import { buildNetworkGraph, edgeTravelHours, type NetworkGraph } from "./derived/network-graph";
+import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, onTerrainClick, setSelectedTerrain, onRouteClick, setSelectedRoute, setHighlightedRoutes, type NameMode } from "./layers/render";
+import { buildNetworkGraph, edgeTravelHours, aggregateGroup, type NetworkGraph } from "./derived/network-graph";
 import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
@@ -17,10 +18,15 @@ import { ClimateOverlay } from "./derived/climate-overlay";
 import { mountClimateControl } from "./derived/climate-control";
 import { mountLayersPanel } from "./derived/layers-control";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
+import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-panel";
+import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
+import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
+import { createRouteGroup, addRouteGroupMember } from "./layers/features";
 import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
 import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
 import { deriveCityResources } from "./derived/resources";
+import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
 
 const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
@@ -113,18 +119,156 @@ async function boot(): Promise<void> {
     };
     const wiki = new WikiPanel(panelMount, host, () => setSelectedLocation(map, null));
 
+    // While placing a break, the next map click is consumed by placement — the
+    // normal select handlers must ignore it. While adding members to a corridor,
+    // route clicks add to that corridor instead of opening the route panel.
+    let placingBreak = false;
+    let addingToGroupId: string | null = null;
+
+    /** Clear every panel + selection highlight (before opening a new one). */
+    const clearSelections = (): void => {
+      wiki.close();
+      terrainPanel.close();
+      routePanel.close();
+      groupPanel.close();
+      setSelectedLocation(map, null);
+      setSelectedTerrain(map, null);
+      setSelectedRoute(map, null);
+      setHighlightedRoutes(map, []);
+    };
+
     /** Select a location: highlight it, ease toward it, and open the panel. */
     const selectLocation = (id: string): void => {
+      if (placingBreak || addingToGroupId) return;
       const detail = data.locationDetails.get(id);
       if (!detail) return;
-      terrainPanel.close();
-      setSelectedTerrain(map, null);
+      clearSelections();
       setSelectedLocation(map, id);
       if (detail.lngLat) map.easeTo({ center: detail.lngLat, duration: 500 });
       wiki.open(id);
     };
 
     onLocationClick(map, selectLocation);
+
+    // Route panel. Class/status feed the network graph, so saving recomputes it.
+    const findRoute = (id: string): RouteDetail | undefined => {
+      const f = data.routes.features.find((ff) => ff.properties.id === id);
+      if (!f) return undefined;
+      const edge = graph.edges.find((e) => e.routeId === id);
+      return {
+        props: f.properties,
+        lengthKm: edge?.lengthKm ?? null,
+        travelHours: edge ? edgeTravelHours(edge) : null,
+      };
+    };
+    const routeHost: RouteHost = {
+      getRoute: findRoute,
+      getBreaks: (routeId) => data.routeBreaks.filter((b) => b.route_id === routeId),
+      beginPlaceBreak: (routeId, kind) => {
+        placingBreak = true;
+        setStatus("Click the spot on the route to place the break.");
+        map.getCanvas().style.cursor = "crosshair";
+        map.once("click", (e) => {
+          const point: Point = { type: "Point", coordinates: [e.lngLat.lng, e.lngLat.lat] };
+          addRouteBreak(routeId, point, kind)
+            .then(async () => {
+              applyData(await loadFeatures());
+              setStatus("Break placed.");
+            })
+            .catch((err: unknown) => setStatus(err instanceof Error ? err.message : String(err), "error"))
+            .finally(() => {
+              placingBreak = false;
+              map.getCanvas().style.cursor = "";
+            });
+        });
+      },
+      setBreakActive: (id, active) => setRouteBreakActive(id, active),
+      deleteBreak: (id) => deleteRouteBreak(id),
+      reloadData: async () => applyData(await loadFeatures()),
+      canEdit: () => hasBackend(),
+      setStatus,
+    };
+    const routePanel = new RoutePanel(panelMount, routeHost, () => setSelectedRoute(map, null));
+    const selectRoute = (id: string): void => {
+      if (placingBreak || !findRoute(id)) return;
+      // In corridor add-members mode, route clicks add to the corridor instead.
+      if (addingToGroupId) {
+        const gid = addingToGroupId;
+        addRouteGroupMember(gid, id)
+          .then(async () => {
+            applyData(await loadFeatures());
+            setStatus("Added segment to corridor. Click more, or press Esc to finish.");
+          })
+          .catch((err: unknown) => setStatus(err instanceof Error ? err.message : String(err), "error"));
+        return;
+      }
+      clearSelections();
+      setSelectedRoute(map, id);
+      routePanel.open(id);
+    };
+    onRouteClick(map, selectRoute);
+
+    // Corridors (route groups). Aggregate state is derived from members.
+    const memberIdsOf = (groupId: string): string[] =>
+      data.groupMembers.filter((m) => m.group_id === groupId).map((m) => m.route_id);
+
+    const groupHost: GroupHost = {
+      getGroup: (id) => data.routeGroups.find((g) => g.id === id),
+      getMembers: (id): GroupMemberView[] =>
+        memberIdsOf(id).map((rid) => {
+          const f = data.routes.features.find((ff) => ff.properties.id === rid);
+          const edge = graph.edges.find((e) => e.routeId === rid);
+          const severed = edge ? edgeTravelHours(edge) === null : false;
+          const p = f?.properties;
+          return { routeId: rid, label: p ? `${p.routeClass} ${p.kind}` : "route", severed };
+        }),
+      getAggregate: (id) => aggregateGroup(memberIdsOf(id), graph),
+      beginAddMembers: (groupId) => {
+        addingToGroupId = groupId;
+        setStatus("Click routes to add to the corridor. Press Esc to finish.");
+      },
+      reloadData: async () => applyData(await loadFeatures()),
+      canEdit: () => hasBackend(),
+      setStatus,
+    };
+    const groupPanel = new GroupPanel(panelMount, groupHost, () => setHighlightedRoutes(map, []));
+
+    const selectGroup = (id: string): void => {
+      if (!data.routeGroups.some((g) => g.id === id)) return;
+      clearSelections();
+      setHighlightedRoutes(map, memberIdsOf(id));
+      groupPanel.open(id);
+    };
+
+    const corridorsHost: CorridorsHost = {
+      listGroups: () => data.routeGroups,
+      isClosed: (id) => aggregateGroup(memberIdsOf(id), graph).closed,
+      openGroup: selectGroup,
+      newCorridor: () => {
+        const name = window.prompt("Corridor name:")?.trim();
+        if (!name) return;
+        createRouteGroup(name, [])
+          .then(async (gid) => {
+            applyData(await loadFeatures());
+            selectGroup(gid);
+            groupHost.beginAddMembers(gid);
+          })
+          .catch((err: unknown) => setStatus(err instanceof Error ? err.message : String(err), "error"));
+      },
+      canEdit: () => hasBackend(),
+    };
+    const corridorsControl = mountCorridorsControl(
+      document.getElementById("corridors-panel") ?? document.createElement("div"),
+      corridorsHost,
+    );
+
+    // Esc ends corridor add-members mode.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && addingToGroupId) {
+        addingToGroupId = null;
+        setStatus("Finished adding segments.");
+      }
+    });
 
     // Terrain editor panel. Editing physical inputs cascades into the derived
     // climate: reloadData → recompute → both panels refresh.
@@ -138,9 +282,8 @@ async function boot(): Promise<void> {
     const terrainPanel = new TerrainPanel(panelMount, terrainHost, () => setSelectedTerrain(map, null));
 
     const selectTerrain = (id: string): void => {
-      if (!data.terrainRegions.some((r) => r.id === id)) return;
-      // Opening terrain closes the city panel (and vice versa) to avoid overlap.
-      wiki.close();
+      if (placingBreak || addingToGroupId || !data.terrainRegions.some((r) => r.id === id)) return;
+      clearSelections();
       setSelectedTerrain(map, id);
       terrainPanel.open(id);
     };
@@ -154,6 +297,12 @@ async function boot(): Promise<void> {
       climate.recompute(next);
       if (wiki.isOpen()) wiki.rerenderActive();
       if (terrainPanel.isOpen()) terrainPanel.refresh();
+      if (routePanel.isOpen()) routePanel.refresh();
+      if (groupPanel.isOpen()) groupPanel.refresh();
+      corridorsControl.refresh();
+      // Keep the open corridor's member highlight in sync after edits.
+      const gid = groupPanel.currentGroupId();
+      if (gid) setHighlightedRoutes(map, memberIdsOf(gid));
       setStatus(summarize(next));
     };
 

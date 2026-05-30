@@ -16,6 +16,7 @@ import { TerraDraw, TerraDrawPointMode, TerraDrawLineStringMode, TerraDrawPolygo
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import type { Point, LineString, Polygon } from "geojson";
 import { createLocation, createRoute, createTerritory } from "./features";
+import { snapToRoads } from "./routing";
 
 type Tool = "select" | "location" | "route" | "territory";
 
@@ -95,8 +96,16 @@ export class FeatureEditor {
         });
         this.opts.onStatus(`Added location “${name}”.`);
       } else if (tool === "route") {
-        await createRoute(feature.geometry as LineString, { kind: "road", status: "intact" });
-        this.opts.onStatus("Added route.");
+        // Road routes snap to real roads via OSRM; fall back to the drawn line
+        // if routing is unavailable. (Rail/trail would be hand-traced; the
+        // toolbar's route tool defaults to road.)
+        const drawn = feature.geometry as LineString;
+        const snapped = await snapToRoads(drawn.coordinates);
+        if (snapped) {
+          this.opts.onStatus("Snapped route to roads.");
+        }
+        await createRoute(snapped ?? drawn, { kind: "road", status: "intact" });
+        this.opts.onStatus(snapped ? "Added route (road-snapped)." : "Added route.");
       } else if (tool === "territory") {
         const factionId = this.opts.defaultFactionId();
         if (!factionId) {

@@ -22,6 +22,9 @@ import type {
   RouteGeo,
   TerritoryGeo,
   TerrainRegionGeo,
+  RouteBreakGeo,
+  RouteGroup,
+  RouteGroupMember,
   WorldSettingsGeo,
   Note,
 } from "../state/db-types";
@@ -32,6 +35,15 @@ export interface FeatureData {
   routes: FeatureCollection<LineString, RouteProps>;
   territories: FeatureCollection<MultiPolygon, TerritoryProps>;
   terrain: FeatureCollection<MultiPolygon, TerrainProps>;
+  /** Break markers (points on routes) for rendering, styled by kind. */
+  breaks: FeatureCollection<Point, BreakProps>;
+  /** Route ids closed by ≥1 active break (drives `closed` + graph severing). */
+  closedRouteIds: Set<string>;
+  /** All break rows, for the route panel's per-route break list. */
+  routeBreaks: RouteBreakGeo[];
+  /** Named corridors and their members (many-to-many). */
+  routeGroups: RouteGroup[];
+  groupMembers: RouteGroupMember[];
   /**
    * Full per-location detail keyed by id, for the wiki panel. Kept separate
    * from GeoJSON `properties` because MapLibre stringifies nested objects
@@ -78,9 +90,20 @@ export interface RouteProps {
   id: string;
   kind: RouteGeo["kind"];
   status: RouteGeo["status"];
+  routeClass: RouteGeo["route_class"];
+  /** Closed by ≥1 active break — impassable in the graph, dashed on the map. */
+  closed: boolean;
   ownerFactionId: string | null;
   ownerColor: string;
   purpose: string | null;
+}
+
+export interface BreakProps {
+  id: string;
+  routeId: string;
+  kind: RouteBreakGeo["kind"];
+  active: boolean;
+  label: string | null;
 }
 
 export interface TerritoryProps {
@@ -116,26 +139,47 @@ export async function loadFeatures(): Promise<FeatureData> {
     routes: emptyFC<LineString, RouteProps>(),
     territories: emptyFC<MultiPolygon, TerritoryProps>(),
     terrain: emptyFC<MultiPolygon, TerrainProps>(),
+    breaks: emptyFC<Point, BreakProps>(),
+    closedRouteIds: new Set<string>(),
+    routeBreaks: [],
+    routeGroups: [],
+    groupMembers: [],
     locationDetails: new Map<string, LocationDetail>(),
     terrainRegions: [],
     worldSettings: null,
   };
   if (!sb) return data;
 
-  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, worldRes] =
+  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes] =
     await Promise.all([
       sb.from("factions").select("*"),
       sb.from("locations_geojson").select("*"),
       sb.from("routes_geojson").select("*"),
       sb.from("territories_geojson").select("*"),
       sb.from("terrain_regions_geojson").select("*"),
+      sb.from("route_breaks_geojson").select("*"),
+      sb.from("route_groups").select("*"),
+      sb.from("route_group_members").select("*"),
       sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
     ]);
 
-  for (const res of [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes]) {
+  for (const res of [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
     if (res.error) throw new Error(`Supabase load failed: ${res.error.message}`);
   }
   data.worldSettings = (worldRes.data as WorldSettingsGeo | null) ?? null;
+  data.routeGroups = (groupsRes.data ?? []) as RouteGroup[];
+  data.groupMembers = (membersRes.data ?? []) as RouteGroupMember[];
+
+  // Breaks: build the closed-route set (any active break closes its route) and
+  // the break marker collection.
+  data.routeBreaks = (breaksRes.data ?? []) as RouteBreakGeo[];
+  for (const b of data.routeBreaks) if (b.active) data.closedRouteIds.add(b.route_id);
+  data.breaks.features = data.routeBreaks.map((b) => ({
+    type: "Feature",
+    id: b.id,
+    geometry: b.geometry,
+    properties: { id: b.id, routeId: b.route_id, kind: b.kind, active: b.active, label: b.label },
+  }));
 
   for (const f of (factionsRes.data ?? []) as Faction[]) factions.set(f.id, f);
   const colorOf = (id: string | null): string =>
@@ -184,6 +228,8 @@ export async function loadFeatures(): Promise<FeatureData> {
         id: r.id,
         kind: r.kind,
         status: r.status,
+        routeClass: r.route_class,
+        closed: data.closedRouteIds.has(r.id),
         ownerFactionId: r.owner_faction_id,
         ownerColor: colorOf(r.owner_faction_id),
         purpose: r.purpose,
@@ -270,6 +316,112 @@ export function createRoute(
 
 export function createTerritory(geometry: Polygon, factionId: string): Promise<unknown> {
   return rpc("create_territory", { geometry, faction_id: factionId });
+}
+
+// --- Route breaks -----------------------------------------------------------
+
+/** Place a break on a route at a clicked point (snapped onto the line server-side). */
+export function addRouteBreak(
+  routeId: string,
+  clickPoint: Point,
+  kind: string,
+  label?: string,
+): Promise<unknown> {
+  return rpc("add_route_break", {
+    route_id: routeId,
+    click: clickPoint,
+    kind,
+    label: label ?? null,
+  });
+}
+
+/** Lift/restore a break without deleting it. */
+export async function setRouteBreakActive(id: string, active: boolean): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("route_breaks").update({ active }).eq("id", id);
+  if (error) throw new Error(`update break failed: ${error.message}`);
+}
+
+export async function deleteRouteBreak(id: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("route_breaks").delete().eq("id", id);
+  if (error) throw new Error(`delete break failed: ${error.message}`);
+}
+
+// --- Route groups (corridors) -----------------------------------------------
+
+/** Create a corridor and attach the given member routes. Returns the new id. */
+export async function createRouteGroup(
+  name: string,
+  routeIds: string[],
+  labels: string[] = [],
+): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { data, error } = await sb
+    .from("route_groups")
+    .insert({ name, labels })
+    .select("id")
+    .single();
+  if (error) throw new Error(`create corridor failed: ${error.message}`);
+  const groupId = (data as { id: string }).id;
+  if (routeIds.length) {
+    const rows = routeIds.map((route_id) => ({ group_id: groupId, route_id }));
+    const { error: mErr } = await sb.from("route_group_members").insert(rows);
+    if (mErr) throw new Error(`add corridor members failed: ${mErr.message}`);
+  }
+  return groupId;
+}
+
+export async function updateRouteGroup(
+  id: string,
+  fields: Partial<{ name: string; labels: string[] }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("route_groups").update(fields).eq("id", id);
+  if (error) throw new Error(`update corridor failed: ${error.message}`);
+}
+
+export async function deleteRouteGroup(id: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("route_groups").delete().eq("id", id);
+  if (error) throw new Error(`delete corridor failed: ${error.message}`);
+}
+
+export async function addRouteGroupMember(groupId: string, routeId: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb
+    .from("route_group_members")
+    .upsert({ group_id: groupId, route_id: routeId });
+  if (error) throw new Error(`add member failed: ${error.message}`);
+}
+
+export async function removeRouteGroupMember(groupId: string, routeId: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb
+    .from("route_group_members")
+    .delete()
+    .eq("group_id", groupId)
+    .eq("route_id", routeId);
+  if (error) throw new Error(`remove member failed: ${error.message}`);
+}
+
+/** Update a route's scalar fields (class, status, kind, purpose). Geometry edits
+ *  still go through the RPC; these are plain column updates. */
+export async function updateRouteFields(
+  id: string,
+  fields: Partial<{ kind: string; status: string; route_class: string; purpose: string | null }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("routes").update(fields).eq("id", id);
+  if (error) throw new Error(`update route failed: ${error.message}`);
 }
 
 export function createTerrainRegion(

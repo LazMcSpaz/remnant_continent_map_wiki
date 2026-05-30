@@ -126,6 +126,22 @@ export interface LocationGeo {
   updated_at: Timestamptz;
 }
 
+export type RouteClass = "major" | "minor" | "secret";
+export type BreakKind = "natural" | "blockade" | "toll";
+
+/** A located barrier on a route (migration 0012). */
+export interface RouteBreakGeo {
+  id: Uuid;
+  route_id: Uuid;
+  geometry: Point;
+  position: number | null;
+  kind: BreakKind;
+  label: string | null;
+  active: boolean;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
+
 export interface RouteGeo {
   id: Uuid;
   geometry: LineString;
@@ -134,6 +150,7 @@ export interface RouteGeo {
   status: RouteStatus;
   mode_ids: Uuid[];
   purpose: string | null;
+  route_class: RouteClass;
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }
@@ -185,4 +202,19 @@ export interface WorldSettingsGeo {
   prevailing_wind_deg: number;
   created_at: Timestamptz;
   updated_at: Timestamptz;
+}
+
+/** A named corridor bundling several route segments (migration 0013). */
+export interface RouteGroup {
+  id: Uuid;
+  name: string;
+  labels: string[];
+  color: string | null;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
+
+export interface RouteGroupMember {
+  group_id: Uuid;
+  route_id: Uuid;
 }

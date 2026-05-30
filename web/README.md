@@ -67,6 +67,33 @@ Territories, Routes, City names — on/off; hiding a layer also makes it
 un-clickable, so you can isolate exactly what you want to select without
 pixel-hunting between overlapping features.
 
+## Routes
+
+- **Drawing** road routes snaps them to real roads via OSRM (between the
+  vertices you click); rail/trail are hand-traced. Configure the routing server
+  with `VITE_OSRM_URL`.
+- **Click a route** to open its panel: edit class (**major/minor/secret**),
+  status, kind, and purpose; see derived length + travel time; read/add/delete
+  notes. Class feeds the network graph (major = faster/higher capacity, secret =
+  slower) and the on-map styling (major thicker, secret fainter).
+- **Breaks** — in a route's panel, choose a kind (**natural / blockade / toll**)
+  and "Place break", then click the spot on the route; the point snaps onto the
+  line. An active break **closes** the route — it's severed in the network graph
+  (travel time → severed) and drawn dashed/faded, without deleting the route.
+  Breaks can be lifted (made inactive) or deleted, and show as kind-colored dots
+  on the line (toggle via the "Route breaks" layer).
+- **Corridors (route groups)** — the **Corridors** panel (top-left) lists named
+  corridors and has "New corridor": name it, then click route segments to add
+  them (Esc to finish). A corridor's panel shows its derived **total length and
+  end-to-end travel**, its **segments**, labels, and notes. A corridor is marked
+  **closed** if *any* member segment is severed (active break or destroyed) — so
+  one blockade closes the whole named route — shown by a red dot in the list and
+  a banner in the panel.
+
+> Note: route breaks and corridors are not yet part of Save/Export (that bundle
+> currently covers features, factions, world settings, terrain, and notes).
+> Worth adding to the snapshot next.
+
 ## Derived climate cascade (Phase 2)
 
 `src/derived/climate.ts` turns the authored inputs into a temperature field,
