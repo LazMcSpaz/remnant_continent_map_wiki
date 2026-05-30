@@ -1,8 +1,14 @@
 # Data model
 
 Indicative and evolving. This sketch expands the README's data-model section
-into concrete table and GeoJSON shapes. Treat field names as provisional until
-the first migration lands; treat the *layer assignment* of each table as fixed.
+into concrete table and GeoJSON shapes. Treat the *layer assignment* of each
+table as fixed.
+
+> **Status:** The authored layer is implemented in
+> `supabase/migrations/0001_init_authored_schema.sql` and applied to the
+> "Remnant Continent Atlas" Supabase project (PostGIS, SRID 4326). Typed for the
+> client in `web/src/state/db-types.ts`. See ADR 0002. The derived and simulated
+> sections below remain forward-looking.
 
 Geometry is stored in PostGIS (`geometry`/`geography`, SRID 4326). Features
 exported to the client are GeoJSON.
