@@ -15,6 +15,7 @@ import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { mountClimateControl } from "./derived/climate-control";
+import { mountLayersPanel } from "./derived/layers-control";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
 import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
@@ -72,9 +73,11 @@ async function boot(): Promise<void> {
     const nameMode = initNameToggle(map);
     addFeatureLayers(map, data, nameMode);
 
-    // Tabbed wiki panel. The host is its window into live app state, so the
-    // panel can edit, navigate, and refresh without owning data or map state.
-    const appEl = document.getElementById("app") ?? document.body;
+    // Panels anchor to the map area (below the header), not the whole app, so
+    // they never overlap the header bar.
+    const panelMount = document.querySelector<HTMLElement>(".map-area")
+      ?? document.getElementById("app")
+      ?? document.body;
     // Derived climate overlay (Phase 2): recomputes from authored inputs.
     const climate = new ClimateOverlay(map);
     climate.recompute(data);
@@ -108,7 +111,7 @@ async function boot(): Promise<void> {
       navigateTo: (id) => selectLocation(id),
       reloadData: async () => applyData(await loadFeatures()),
     };
-    const wiki = new WikiPanel(appEl, host, () => setSelectedLocation(map, null));
+    const wiki = new WikiPanel(panelMount, host, () => setSelectedLocation(map, null));
 
     /** Select a location: highlight it, ease toward it, and open the panel. */
     const selectLocation = (id: string): void => {
@@ -132,7 +135,7 @@ async function boot(): Promise<void> {
       canEdit: () => hasBackend(),
       setStatus,
     };
-    const terrainPanel = new TerrainPanel(appEl, terrainHost, () => setSelectedTerrain(map, null));
+    const terrainPanel = new TerrainPanel(panelMount, terrainHost, () => setSelectedTerrain(map, null));
 
     const selectTerrain = (id: string): void => {
       if (!data.terrainRegions.some((r) => r.id === id)) return;
@@ -157,6 +160,10 @@ async function boot(): Promise<void> {
     mountClimate(climate, () => data, () => {
       if (wiki.isOpen()) wiki.rerenderActive();
     });
+
+    // Layers panel: toggle terrain / territories / routes / labels / climate.
+    const layersEl = document.getElementById("layers-panel");
+    if (layersEl) mountLayersPanel(layersEl, map, climate);
 
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");
@@ -211,7 +218,6 @@ function mountClimate(
   const initial = getData().worldSettings?.season ?? 0;
   mountClimateControl(container, initial, {
     canEdit: hasBackend(),
-    onToggle: (visible) => climate.setVisible(visible),
     onMetric: (metric) => climate.setMetric(metric, getData()),
     // Live preview: mutate the in-memory season input and recompute the derived
     // field — no DB round-trip, so scrubbing is smooth. This is the cascade in

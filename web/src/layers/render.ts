@@ -169,6 +169,27 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
 
 let labelMarkers: maplibregl.Marker[] = [];
 let labelMode: NameMode = "new";
+let labelsVisible = true;
+
+/** Feature groups that can be toggled as whole layers from the layers panel. */
+export type LayerGroup = "terrain" | "territories" | "routes" | "labels";
+const GROUP_LAYERS: Record<LayerGroup, string[]> = {
+  terrain: [LAYER.terrainFill, LAYER.terrainLine, LAYER.terrainHighlight],
+  territories: [LAYER.territoryFill, LAYER.territoryLine],
+  routes: [LAYER.routeLine, LAYER.routeLineDashed],
+  labels: [],
+};
+
+/** Show/hide a whole feature group (also makes it un-clickable when hidden). */
+export function setGroupVisible(map: MlMap, group: LayerGroup, visible: boolean): void {
+  for (const id of GROUP_LAYERS[group]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+  }
+  if (group === "labels") {
+    labelsVisible = visible;
+    for (const m of labelMarkers) m.getElement().style.display = visible ? "" : "none";
+  }
+}
 
 function applyLabelText(el: HTMLElement, mode: NameMode): void {
   const name = el.dataset.name ?? "";
@@ -188,6 +209,7 @@ export function renderLabels(map: MlMap, data: FeatureData, mode: NameMode): voi
     el.dataset.name = f.properties.name;
     el.dataset.old = f.properties.oldWorldName ?? "";
     applyLabelText(el, mode);
+    if (!labelsVisible) el.style.display = "none";
     const marker = new maplibregl.Marker({ element: el, anchor: "top", offset: [0, 8] })
       .setLngLat(f.geometry.coordinates as [number, number])
       .addTo(map);

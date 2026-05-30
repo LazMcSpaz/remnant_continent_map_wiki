@@ -58,6 +58,15 @@ can be added later without re-authoring data (see ADR 0003):
 Per the three-layer model, only these inputs are stored; temperature fields,
 growing-degree-days, and suitability scores are derived at runtime.
 
+## Map extent & layers
+
+The map spans **continental North America** (pannable across Canada/US/Mexico)
+and opens zoomed on the Midwest corridor where the seed data lives. A **Layers**
+panel (top-left) toggles each feature group — Climate zones, Terrain,
+Territories, Routes, City names — on/off; hiding a layer also makes it
+un-clickable, so you can isolate exactly what you want to select without
+pixel-hunting between overlapping features.
+
 ## Derived climate cascade (Phase 2)
 
 `src/derived/climate.ts` turns the authored inputs into a temperature field,
