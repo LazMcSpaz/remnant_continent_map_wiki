@@ -120,6 +120,7 @@ export interface LocationGeo {
   old_world_name: string | null;
   type: string;
   faction_id: Uuid | null;
+  population: number | null;
   resource_overrides: Json;
   created_at: Timestamptz;
   updated_at: Timestamptz;

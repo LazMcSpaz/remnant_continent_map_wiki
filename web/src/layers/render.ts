@@ -148,3 +148,12 @@ function wireInteractions(map: MlMap): void {
     popup.remove();
   });
 }
+
+/** Register a handler fired with the location id when a city marker is clicked. */
+export function onLocationClick(map: MlMap, handler: (locationId: string) => void): void {
+  map.on("click", LAYER.locationCircle, (e) => {
+    const f = e.features?.[0];
+    const id = f?.properties?.id;
+    if (typeof id === "string") handler(id);
+  });
+}

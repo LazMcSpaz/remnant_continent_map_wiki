@@ -16,13 +16,19 @@ import type {
   MultiPolygon,
 } from "geojson";
 import { getSupabase } from "../state/supabase";
-import type { Faction, LocationGeo, RouteGeo, TerritoryGeo } from "../state/db-types";
+import type { Faction, LocationGeo, RouteGeo, TerritoryGeo, Note } from "../state/db-types";
 
 export interface FeatureData {
   factions: Map<string, Faction>;
   locations: FeatureCollection<Point | Polygon, LocationProps>;
   routes: FeatureCollection<LineString, RouteProps>;
   territories: FeatureCollection<MultiPolygon, TerritoryProps>;
+  /**
+   * Full per-location detail keyed by id, for the wiki panel. Kept separate
+   * from GeoJSON `properties` because MapLibre stringifies nested objects
+   * (e.g. resource_overrides) when features round-trip through the map.
+   */
+  locationDetails: Map<string, LocationDetail>;
 }
 
 export interface LocationProps {
@@ -32,6 +38,19 @@ export interface LocationProps {
   type: string;
   factionId: string | null;
   factionColor: string;
+}
+
+export interface LocationDetail {
+  id: string;
+  name: string;
+  oldWorldName: string | null;
+  type: string;
+  factionId: string | null;
+  factionName: string | null;
+  factionColor: string;
+  population: number | null;
+  resources: Record<string, number>;
+  lngLat: [number, number] | null;
 }
 
 export interface RouteProps {
@@ -55,6 +74,17 @@ function emptyFC<G extends Geometry, P extends GeoJsonProperties>(): FeatureColl
   return { type: "FeatureCollection", features: [] };
 }
 
+/** Normalize the resource_overrides jsonb into a flat number map. */
+function coerceResources(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+    }
+  }
+  return out;
+}
+
 /** Load all authored feature layers. Empty collections when offline. */
 export async function loadFeatures(): Promise<FeatureData> {
   const sb = getSupabase();
@@ -64,6 +94,7 @@ export async function loadFeatures(): Promise<FeatureData> {
     locations: emptyFC<Point | Polygon, LocationProps>(),
     routes: emptyFC<LineString, RouteProps>(),
     territories: emptyFC<MultiPolygon, TerritoryProps>(),
+    locationDetails: new Map<string, LocationDetail>(),
   };
   if (!sb) return data;
 
@@ -81,21 +112,39 @@ export async function loadFeatures(): Promise<FeatureData> {
   for (const f of (factionsRes.data ?? []) as Faction[]) factions.set(f.id, f);
   const colorOf = (id: string | null): string =>
     (id && factions.get(id)?.color) || NEUTRAL;
+  const nameOf = (id: string | null): string | null =>
+    (id && factions.get(id)?.name) || null;
 
   data.locations.features = ((locationsRes.data ?? []) as LocationGeo[]).map(
-    (r): Feature<Point | Polygon, LocationProps> => ({
-      type: "Feature",
-      id: r.id,
-      geometry: r.geometry,
-      properties: {
+    (r): Feature<Point | Polygon, LocationProps> => {
+      data.locationDetails.set(r.id, {
         id: r.id,
         name: r.name,
         oldWorldName: r.old_world_name,
         type: r.type,
         factionId: r.faction_id,
+        factionName: nameOf(r.faction_id),
         factionColor: colorOf(r.faction_id),
-      },
-    }),
+        population: r.population,
+        resources: coerceResources(r.resource_overrides),
+        lngLat: r.geometry.type === "Point"
+          ? [r.geometry.coordinates[0], r.geometry.coordinates[1]]
+          : null,
+      });
+      return {
+        type: "Feature",
+        id: r.id,
+        geometry: r.geometry,
+        properties: {
+          id: r.id,
+          name: r.name,
+          oldWorldName: r.old_world_name,
+          type: r.type,
+          factionId: r.faction_id,
+          factionColor: colorOf(r.faction_id),
+        },
+      };
+    },
   );
 
   data.routes.features = ((routesRes.data ?? []) as RouteGeo[]).map(
@@ -204,4 +253,59 @@ export async function deleteFeature(layer: EditableLayer, id: string): Promise<v
   if (!sb) throw new Error("No backend configured — editing is unavailable.");
   const { error } = await sb.from(TABLE[layer]).delete().eq("id", id);
   if (error) throw new Error(`delete ${layer} failed: ${error.message}`);
+}
+
+// --- Notes (the wiki's annotations) -----------------------------------------
+
+/** Load notes attached to a given feature (e.g. a location), newest first. */
+export async function loadNotesFor(
+  targetType: string,
+  targetId: string,
+): Promise<Note[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from("notes")
+    .select("*")
+    .eq("target_type", targetType)
+    .eq("target_id", targetId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`load notes failed: ${error.message}`);
+  return (data ?? []) as Note[];
+}
+
+/** Add a note to a feature. Returns the created row. */
+export async function addNote(
+  targetType: string,
+  targetId: string,
+  body: string,
+  tags: string[] = [],
+): Promise<Note> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — notes are unavailable.");
+  const { data, error } = await sb
+    .from("notes")
+    .insert({ target_type: targetType, target_id: targetId, body, tags })
+    .select()
+    .single();
+  if (error) throw new Error(`add note failed: ${error.message}`);
+  return data as Note;
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — notes are unavailable.");
+  const { error } = await sb.from("notes").delete().eq("id", id);
+  if (error) throw new Error(`delete note failed: ${error.message}`);
+}
+
+/** Update scalar location fields (population, names, type) via PostgREST. */
+export async function updateLocationFields(
+  id: string,
+  fields: Partial<{ name: string; old_world_name: string | null; type: string; population: number | null }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("locations").update(fields).eq("id", id);
+  if (error) throw new Error(`update location failed: ${error.message}`);
 }

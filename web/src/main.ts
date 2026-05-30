@@ -8,9 +8,10 @@ import "./styles.css";
 import type { Map as MlMap } from "maplibre-gl";
 import { createBasemap } from "./map/basemap";
 import { loadFeatures, hasBackend, type FeatureData } from "./layers/features";
-import { addFeatureLayers, updateFeatureData, setNameMode, type NameMode } from "./layers/render";
+import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, type NameMode } from "./layers/render";
 import { buildNetworkGraph, edgeTravelHours, type NetworkGraph } from "./derived/network-graph";
 import { mountEditorToolbar } from "./layers/editor";
+import { WikiPanel } from "./notes/wiki-panel";
 
 function setStatus(text: string, kind: "info" | "error" = "info"): void {
   const el = document.getElementById("status");
@@ -53,15 +54,30 @@ async function boot(): Promise<void> {
 
   try {
     let data = await loadFeatures();
+    let graph = rebuildGraph(data);
     const nameMode = initNameToggle(map);
     addFeatureLayers(map, data, nameMode);
-    rebuildGraph(data);
+
+    // Tabbed wiki panel: open on location click with current detail + graph.
+    const appEl = document.getElementById("app") ?? document.body;
+    const wiki = new WikiPanel(appEl);
+    onLocationClick(map, (id) => {
+      const detail = data.locationDetails.get(id);
+      if (detail) wiki.open(detail, graph, () => {});
+    });
 
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");
     } else {
       setStatus(summarize(data));
-      mountEditor(map, () => data, (next) => (data = next));
+      mountEditor(
+        map,
+        () => data,
+        (next) => {
+          data = next;
+          graph = rebuildGraph(next);
+        },
+      );
     }
 
     (window as unknown as { __map?: unknown }).__map = map;
@@ -84,9 +100,8 @@ function mountEditor(map: MlMap, getData: () => FeatureData, setData: (d: Featur
     },
     onChange: async () => {
       const next = await loadFeatures();
-      setData(next);
+      setData(next); // also rebuilds the derived graph
       updateFeatureData(map, next);
-      rebuildGraph(next);
       setStatus(summarize(next));
     },
   });

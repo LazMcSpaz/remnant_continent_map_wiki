@@ -56,3 +56,18 @@ Terra Draw editing of the authored layer:
 Geometry is written to Supabase via `create_*` RPCs (GeoJSON → PostGIS), then
 the authored data reloads and the derived network graph rebuilds. Without a
 backend the toolbar stays hidden and the app is read-only.
+
+## Wiki panel
+
+Click a city marker to open the **tabbed wiki panel** (top-right). Tabs:
+
+- **Overview** — type, new/old-world names, faction, coordinates.
+- **Population** — authored population stat.
+- **Resources** — `resource_overrides` shown as 0–100 bars (Phase 2 will also
+  derive these from geography; overrides pin them).
+- **Connections** — routes touching this location, from the derived network
+  graph, with length, travel time, and intact/damaged/severed status.
+- **Notes** — read/add/delete annotations from the `notes` table.
+
+`src/notes/wiki-panel.ts` is pure DOM; it reads `LocationDetail` (authored),
+the `NetworkGraph` (derived), and notes, keeping the three layers distinct.

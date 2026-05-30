@@ -123,3 +123,248 @@ body {
 .maplibregl-ctrl-attrib {
   font-size: 0.7rem;
 }
+
+/* ---- Wiki panel (tabbed location details) -------------------------------- */
+.wiki-panel {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  width: min(360px, calc(100% - 1.2rem));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+}
+
+.wiki-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.9rem 0.5rem;
+}
+.wiki-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.wiki-close {
+  font: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+.wiki-close:hover {
+  color: var(--text);
+}
+
+.wiki-tabs {
+  display: flex;
+  gap: 0.15rem;
+  padding: 0 0.6rem;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.wiki-tab {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.4rem 0.55rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wiki-tab:hover {
+  color: var(--text);
+}
+.wiki-tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.wiki-body {
+  padding: 0.9rem;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+.wiki-muted {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.wiki-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+}
+.wiki-dl dt {
+  color: var(--text-muted);
+}
+.wiki-dl dd {
+  margin: 0;
+}
+
+.wiki-faction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+}
+.wiki-swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.wiki-bignum {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0.2rem 0 0;
+}
+
+.wiki-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+.wiki-bar-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr 2rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+.wiki-bar-label {
+  font-size: 0.8rem;
+}
+.wiki-bar {
+  height: 0.55rem;
+  background: var(--bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.wiki-bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+.wiki-bar-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
+.wiki-conn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.wiki-conn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.wiki-conn-to {
+  font-weight: 600;
+}
+.wiki-tag {
+  font-size: 0.68rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.wiki-ok {
+  color: #7ee787;
+  border-color: #2ea04366;
+}
+.wiki-warn {
+  color: #e0af68;
+  border-color: #e0af6866;
+}
+.wiki-bad {
+  color: var(--error);
+  border-color: #ff7b7266;
+}
+
+.wiki-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+.wiki-note {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+}
+.wiki-note-body {
+  white-space: pre-wrap;
+}
+.wiki-note-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.wiki-note-del {
+  margin-left: auto;
+  font: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.wiki-note-del:hover {
+  color: var(--error);
+}
+
+.wiki-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.wiki-note-input {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  resize: vertical;
+}
+.wiki-btn {
+  align-self: flex-end;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #0e1116;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.wiki-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
