@@ -8,7 +8,7 @@ import "./styles.css";
 import type { Map as MlMap } from "maplibre-gl";
 import { createBasemap } from "./map/basemap";
 import { loadFeatures, hasBackend, type FeatureData } from "./layers/features";
-import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, onTerrainClick, setSelectedTerrain, type NameMode } from "./layers/render";
+import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, onTerrainClick, setSelectedTerrain, onRouteClick, setSelectedRoute, type NameMode } from "./layers/render";
 import { buildNetworkGraph, edgeTravelHours, type NetworkGraph } from "./derived/network-graph";
 import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
@@ -17,6 +17,7 @@ import { ClimateOverlay } from "./derived/climate-overlay";
 import { mountClimateControl } from "./derived/climate-control";
 import { mountLayersPanel } from "./derived/layers-control";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
+import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-panel";
 import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
 import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
@@ -113,18 +114,53 @@ async function boot(): Promise<void> {
     };
     const wiki = new WikiPanel(panelMount, host, () => setSelectedLocation(map, null));
 
+    /** Clear every panel + selection highlight (before opening a new one). */
+    const clearSelections = (): void => {
+      wiki.close();
+      terrainPanel.close();
+      routePanel.close();
+      setSelectedLocation(map, null);
+      setSelectedTerrain(map, null);
+      setSelectedRoute(map, null);
+    };
+
     /** Select a location: highlight it, ease toward it, and open the panel. */
     const selectLocation = (id: string): void => {
       const detail = data.locationDetails.get(id);
       if (!detail) return;
-      terrainPanel.close();
-      setSelectedTerrain(map, null);
+      clearSelections();
       setSelectedLocation(map, id);
       if (detail.lngLat) map.easeTo({ center: detail.lngLat, duration: 500 });
       wiki.open(id);
     };
 
     onLocationClick(map, selectLocation);
+
+    // Route panel. Class/status feed the network graph, so saving recomputes it.
+    const findRoute = (id: string): RouteDetail | undefined => {
+      const f = data.routes.features.find((ff) => ff.properties.id === id);
+      if (!f) return undefined;
+      const edge = graph.edges.find((e) => e.routeId === id);
+      return {
+        props: f.properties,
+        lengthKm: edge?.lengthKm ?? null,
+        travelHours: edge ? edgeTravelHours(edge) : null,
+      };
+    };
+    const routeHost: RouteHost = {
+      getRoute: findRoute,
+      reloadData: async () => applyData(await loadFeatures()),
+      canEdit: () => hasBackend(),
+      setStatus,
+    };
+    const routePanel = new RoutePanel(panelMount, routeHost, () => setSelectedRoute(map, null));
+    const selectRoute = (id: string): void => {
+      if (!findRoute(id)) return;
+      clearSelections();
+      setSelectedRoute(map, id);
+      routePanel.open(id);
+    };
+    onRouteClick(map, selectRoute);
 
     // Terrain editor panel. Editing physical inputs cascades into the derived
     // climate: reloadData → recompute → both panels refresh.
@@ -139,8 +175,7 @@ async function boot(): Promise<void> {
 
     const selectTerrain = (id: string): void => {
       if (!data.terrainRegions.some((r) => r.id === id)) return;
-      // Opening terrain closes the city panel (and vice versa) to avoid overlap.
-      wiki.close();
+      clearSelections();
       setSelectedTerrain(map, id);
       terrainPanel.open(id);
     };
@@ -154,6 +189,7 @@ async function boot(): Promise<void> {
       climate.recompute(next);
       if (wiki.isOpen()) wiki.rerenderActive();
       if (terrainPanel.isOpen()) terrainPanel.refresh();
+      if (routePanel.isOpen()) routePanel.refresh();
       setStatus(summarize(next));
     };
 

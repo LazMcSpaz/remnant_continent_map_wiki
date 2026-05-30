@@ -126,6 +126,8 @@ export interface LocationGeo {
   updated_at: Timestamptz;
 }
 
+export type RouteClass = "major" | "minor" | "secret";
+
 export interface RouteGeo {
   id: Uuid;
   geometry: LineString;
@@ -134,6 +136,7 @@ export interface RouteGeo {
   status: RouteStatus;
   mode_ids: Uuid[];
   purpose: string | null;
+  route_class: RouteClass;
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }

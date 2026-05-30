@@ -45,6 +45,8 @@ const EARTH_R = 6371; // km
 
 /** Default speeds (km/h) by route kind — superseded by travel_modes later. */
 const KIND_SPEED: Record<string, number> = { rail: 90, road: 60, trail: 25 };
+/** Class multiplier: major routes are faster/better maintained; secret slower. */
+const CLASS_SPEED: Record<string, number> = { major: 1, minor: 0.75, secret: 0.5 };
 
 function toRad(d: number): number {
   return (d * Math.PI) / 180;
@@ -145,8 +147,8 @@ export function buildNetworkGraph(
       from,
       to,
       owner: props.ownerFactionId,
-      speed: KIND_SPEED[props.kind] ?? 50,
-      capacity: 1, // Phase 2 will derive real capacity
+      speed: (KIND_SPEED[props.kind] ?? 50) * (CLASS_SPEED[props.routeClass] ?? 1),
+      capacity: props.routeClass === "major" ? 3 : props.routeClass === "minor" ? 2 : 1,
       status: props.status,
       lengthKm: lineLengthKm(coords),
     });

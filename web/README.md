@@ -67,6 +67,18 @@ Territories, Routes, City names — on/off; hiding a layer also makes it
 un-clickable, so you can isolate exactly what you want to select without
 pixel-hunting between overlapping features.
 
+## Routes
+
+- **Drawing** road routes snaps them to real roads via OSRM (between the
+  vertices you click); rail/trail are hand-traced. Configure the routing server
+  with `VITE_OSRM_URL`.
+- **Click a route** to open its panel: edit class (**major/minor/secret**),
+  status, kind, and purpose; see derived length + travel time; read/add/delete
+  notes. Class feeds the network graph (major = faster/higher capacity, secret =
+  slower) and the on-map styling (major thicker, secret fainter).
+- Breaks (located barriers that sever a route) and named route groups/corridors
+  are planned follow-ups.
+
 ## Derived climate cascade (Phase 2)
 
 `src/derived/climate.ts` turns the authored inputs into a temperature field,

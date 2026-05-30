@@ -21,6 +21,7 @@ const LAYER = {
   territoryLine: "rc-territory-line",
   routeLine: "rc-route-line",
   routeLineDashed: "rc-route-line-dashed",
+  routeHighlight: "rc-route-highlight",
   locationCircle: "rc-location-circle",
   locationHighlight: "rc-location-highlight",
 } as const;
@@ -101,16 +102,34 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     "owner", "#bb9af7",
     "#9aa6b2",
   ];
+  // Width by class: major routes read as trunk lines, secret as faint paths.
   const routeWidth: maplibregl.ExpressionSpecification = [
-    "match", ["get", "kind"], "rail", 3.5, "road", 2.5, 1.5,
+    "match", ["get", "routeClass"], "major", 4, "minor", 2.5, "secret", 1.5, 2.5,
   ];
+  // Secret routes are dimmer; destroyed dimmer still.
+  const routeOpacity: maplibregl.ExpressionSpecification = [
+    "case",
+    ["==", ["get", "status"], "destroyed"], 0.35,
+    ["==", ["get", "routeClass"], "secret"], 0.6,
+    1,
+  ];
+
+  // Selection halo for routes, drawn beneath the route lines.
+  map.addLayer({
+    id: LAYER.routeHighlight,
+    type: "line",
+    source: SRC.routes,
+    filter: ["==", ["get", "id"], "__none__"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#ffd166", "line-width": ["+", routeWidth, 5], "line-opacity": 0.8 },
+  });
   map.addLayer({
     id: LAYER.routeLine,
     type: "line",
     source: SRC.routes,
     filter: ["==", ["get", "status"], "intact"],
     layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": routeColor, "line-width": routeWidth, "line-opacity": 1 },
+    paint: { "line-color": routeColor, "line-width": routeWidth, "line-opacity": routeOpacity },
   });
   map.addLayer({
     id: LAYER.routeLineDashed,
@@ -121,7 +140,7 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     paint: {
       "line-color": routeColor,
       "line-width": routeWidth,
-      "line-opacity": ["match", ["get", "status"], "destroyed", 0.35, 1],
+      "line-opacity": routeOpacity,
       "line-dasharray": [2, 1.5],
     },
   });
@@ -176,7 +195,7 @@ export type LayerGroup = "terrain" | "territories" | "routes" | "labels";
 const GROUP_LAYERS: Record<LayerGroup, string[]> = {
   terrain: [LAYER.terrainFill, LAYER.terrainLine, LAYER.terrainHighlight],
   territories: [LAYER.territoryFill, LAYER.territoryLine],
-  routes: [LAYER.routeLine, LAYER.routeLineDashed],
+  routes: [LAYER.routeLine, LAYER.routeLineDashed, LAYER.routeHighlight],
   labels: [],
 };
 
@@ -273,6 +292,33 @@ export function setSelectedLocation(map: MlMap, locationId: string | null): void
     ["get", "id"],
     locationId ?? "__none__",
   ]);
+}
+
+/** Register a handler fired with the route id when a route line is clicked. */
+export function onRouteClick(map: MlMap, handler: (routeId: string) => void): void {
+  const onClick = (e: maplibregl.MapMouseEvent) => {
+    // Don't steal clicks meant for a city marker on top of the line.
+    if (map.getLayer(LAYER.locationCircle)) {
+      const onCity = map.queryRenderedFeatures(e.point, { layers: [LAYER.locationCircle] });
+      if (onCity.length > 0) return;
+    }
+    const hit = map.queryRenderedFeatures(e.point, {
+      layers: [LAYER.routeLine, LAYER.routeLineDashed].filter((id) => map.getLayer(id)),
+    });
+    const id = hit[0]?.properties?.id;
+    if (typeof id === "string") handler(id);
+  };
+  for (const layer of [LAYER.routeLine, LAYER.routeLineDashed]) {
+    map.on("click", layer, onClick);
+    map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
+    map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
+  }
+}
+
+/** Outline the selected route (or clear with null). */
+export function setSelectedRoute(map: MlMap, routeId: string | null): void {
+  if (!map.getLayer(LAYER.routeHighlight)) return;
+  map.setFilter(LAYER.routeHighlight, ["==", ["get", "id"], routeId ?? "__none__"]);
 }
 
 /** Register a handler fired with the terrain region id when its fill is clicked. */

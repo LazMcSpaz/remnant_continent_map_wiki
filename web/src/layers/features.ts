@@ -78,6 +78,7 @@ export interface RouteProps {
   id: string;
   kind: RouteGeo["kind"];
   status: RouteGeo["status"];
+  routeClass: RouteGeo["route_class"];
   ownerFactionId: string | null;
   ownerColor: string;
   purpose: string | null;
@@ -184,6 +185,7 @@ export async function loadFeatures(): Promise<FeatureData> {
         id: r.id,
         kind: r.kind,
         status: r.status,
+        routeClass: r.route_class,
         ownerFactionId: r.owner_faction_id,
         ownerColor: colorOf(r.owner_faction_id),
         purpose: r.purpose,
@@ -270,6 +272,18 @@ export function createRoute(
 
 export function createTerritory(geometry: Polygon, factionId: string): Promise<unknown> {
   return rpc("create_territory", { geometry, faction_id: factionId });
+}
+
+/** Update a route's scalar fields (class, status, kind, purpose). Geometry edits
+ *  still go through the RPC; these are plain column updates. */
+export async function updateRouteFields(
+  id: string,
+  fields: Partial<{ kind: string; status: string; route_class: string; purpose: string | null }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("routes").update(fields).eq("id", id);
+  if (error) throw new Error(`update route failed: ${error.message}`);
 }
 
 export function createTerrainRegion(
