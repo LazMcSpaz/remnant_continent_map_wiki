@@ -19,12 +19,22 @@ import { edgeTravelHours } from "../derived/network-graph";
 import type { Note } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
 
-type TabId = "overview" | "population" | "resources" | "connections" | "notes";
+type TabId = "overview" | "population" | "resources" | "climate" | "connections" | "notes";
+
+/** Derived climate readout for a location, computed by the host. */
+export interface LocationClimate {
+  tempC: number;
+  warmth: number;
+  season: number;
+  seasonLabel: string;
+}
 
 /** The panel's window into app state — implemented by main.ts. */
 export interface WikiHost {
   getDetail(id: string): LocationDetail | undefined;
   getGraph(): NetworkGraph;
+  /** Derived climate at a location (recomputed from authored inputs). */
+  getClimate(detail: LocationDetail): LocationClimate | null;
   /** Fly to and select another location, re-opening the panel on it. */
   navigateTo(id: string): void;
   /** Reload authored data + rebuild the graph after an edit. */
@@ -224,6 +234,39 @@ function renderResources(hostEl: HTMLElement, ctx: RenderCtx): void {
   view();
 }
 
+// --- Climate (derived, read-only) -------------------------------------------
+
+function renderClimate(hostEl: HTMLElement, ctx: RenderCtx): void {
+  const { detail, host } = ctx;
+  const c = host.getClimate(detail);
+  if (!c) {
+    hostEl.replaceChildren(
+      emptyNote("No climate available — this location has no coordinates, or world settings are unset."),
+    );
+    return;
+  }
+  hostEl.replaceChildren(
+    el("p", { className: "wiki-bignum" }, [`${c.tempC.toFixed(1)} °C`]),
+    el("p", { className: "wiki-muted" }, [`derived mean temperature · ${c.seasonLabel}`]),
+  );
+  const bars = el("div", { className: "wiki-bars" });
+  const warmthFill = el("div", { className: "wiki-bar-fill" });
+  warmthFill.style.width = `${Math.max(0, Math.min(100, c.warmth))}%`;
+  bars.append(
+    el("div", { className: "wiki-bar-row" }, [
+      el("span", { className: "wiki-bar-label" }, ["Growing"]),
+      el("div", { className: "wiki-bar" }, [warmthFill]),
+      el("span", { className: "wiki-bar-val" }, [String(Math.round(c.warmth))]),
+    ]),
+  );
+  hostEl.append(bars);
+  hostEl.append(
+    el("p", { className: "wiki-muted" }, [
+      "Derived from the pole, season, and elevation — recomputes when those inputs change. Scrub the season (bottom-left) to watch it move.",
+    ]),
+  );
+}
+
 // --- Connections (clickable) ------------------------------------------------
 
 function renderConnections(hostEl: HTMLElement, ctx: RenderCtx): void {
@@ -391,6 +434,7 @@ const TABS: Tab[] = [
   { id: "overview", label: "Overview", render: renderOverview },
   { id: "population", label: "Population", render: renderPopulation },
   { id: "resources", label: "Resources", render: renderResources },
+  { id: "climate", label: "Climate", render: renderClimate },
   { id: "connections", label: "Connections", render: renderConnections },
   { id: "notes", label: "Notes", render: renderNotes },
 ];

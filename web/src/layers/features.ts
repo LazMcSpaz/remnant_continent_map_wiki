@@ -22,6 +22,7 @@ import type {
   RouteGeo,
   TerritoryGeo,
   TerrainRegionGeo,
+  WorldSettingsGeo,
   Note,
 } from "../state/db-types";
 
@@ -37,6 +38,10 @@ export interface FeatureData {
    * (e.g. resource_overrides) when features round-trip through the map.
    */
   locationDetails: Map<string, LocationDetail>;
+  /** Full terrain rows (all physical-input fields), for the derived layer. */
+  terrainRegions: TerrainRegionGeo[];
+  /** Global climate/energy inputs, or null when none/offline. */
+  worldSettings: WorldSettingsGeo | null;
 }
 
 export interface TerrainProps {
@@ -112,20 +117,25 @@ export async function loadFeatures(): Promise<FeatureData> {
     territories: emptyFC<MultiPolygon, TerritoryProps>(),
     terrain: emptyFC<MultiPolygon, TerrainProps>(),
     locationDetails: new Map<string, LocationDetail>(),
+    terrainRegions: [],
+    worldSettings: null,
   };
   if (!sb) return data;
 
-  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes] = await Promise.all([
-    sb.from("factions").select("*"),
-    sb.from("locations_geojson").select("*"),
-    sb.from("routes_geojson").select("*"),
-    sb.from("territories_geojson").select("*"),
-    sb.from("terrain_regions_geojson").select("*"),
-  ]);
+  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, worldRes] =
+    await Promise.all([
+      sb.from("factions").select("*"),
+      sb.from("locations_geojson").select("*"),
+      sb.from("routes_geojson").select("*"),
+      sb.from("territories_geojson").select("*"),
+      sb.from("terrain_regions_geojson").select("*"),
+      sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
+    ]);
 
   for (const res of [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes]) {
     if (res.error) throw new Error(`Supabase load failed: ${res.error.message}`);
   }
+  data.worldSettings = (worldRes.data as WorldSettingsGeo | null) ?? null;
 
   for (const f of (factionsRes.data ?? []) as Faction[]) factions.set(f.id, f);
   const colorOf = (id: string | null): string =>
@@ -194,7 +204,8 @@ export async function loadFeatures(): Promise<FeatureData> {
     }),
   );
 
-  data.terrain.features = ((terrainRes.data ?? []) as TerrainRegionGeo[]).map(
+  data.terrainRegions = (terrainRes.data ?? []) as TerrainRegionGeo[];
+  data.terrain.features = data.terrainRegions.map(
     (r): Feature<MultiPolygon, TerrainProps> => ({
       type: "Feature",
       id: r.id,
@@ -352,6 +363,26 @@ export async function updateLocationFields(
   if (!sb) throw new Error("No backend configured — editing is unavailable.");
   const { error } = await sb.from("locations").update(fields).eq("id", id);
   if (error) throw new Error(`update location failed: ${error.message}`);
+}
+
+/** Update world_settings scalar climate inputs (season, temps, pole numbers). */
+export async function updateWorldSettings(
+  id: string,
+  fields: Partial<{
+    season: number;
+    global_temp_offset: number;
+    axial_tilt_deg: number;
+    sea_level_m: number;
+    equator_temp_c: number;
+    pole_temp_c: number;
+    lapse_rate_c_per_km: number;
+    prevailing_wind_deg: number;
+  }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("world_settings").update(fields).eq("id", id);
+  if (error) throw new Error(`update world settings failed: ${error.message}`);
 }
 
 /** Replace a location's resource_overrides (pinned derived values). */

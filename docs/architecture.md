@@ -58,7 +58,9 @@ that derived values are never trusted as stored fact.
 web/src/
   map/        Basemap + imagery + renderer setup (MapLibre GL JS).
   layers/     Authored features: locations, routes, territories. Edit via Terra Draw.
-  derived/    Pure recompute: climate, resource potential, AND the network graph.
+  derived/    Pure recompute: the network graph (Phase 1) and the climate
+              cascade (Phase 2 — temperature, growing warmth, crop suitability).
+              Reads world_settings + terrain_regions; stores nothing.
   brush/      Phase 3 procedural mask painting (decay/rebuild, water/forest).
   notes/      Wiki interface + click-through annotations.
   state/      Snapshots, time slider, persistence, import/export (GeoJSON + JSON blob).

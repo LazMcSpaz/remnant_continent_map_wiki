@@ -54,6 +54,17 @@ can be added later without re-authoring data (see ADR 0003):
 Per the three-layer model, only these inputs are stored; temperature fields,
 growing-degree-days, and suitability scores are derived at runtime.
 
+## Derived climate cascade (Phase 2)
+
+`src/derived/climate.ts` turns the authored inputs into a temperature field,
+growing warmth, and crop suitability — pure functions, never stored. The
+control bottom-left toggles a **choropleth overlay** (temperature blue→red or
+crop suitability brown→green over the terrain regions) and a **season scrubber**:
+drag it and the whole derived field recomputes live (committed to
+`world_settings.season` on release). Moving the pole would remap the field the
+same way. A clicked city's **Climate tab** shows its derived temperature and
+growing warmth. See ADR 0004.
+
 Feature layers and derived overlays attach to the `map` instance returned by
 `createBasemap()`. The basemap module knows nothing about them — see
 `docs/architecture.md` for the three-layer model and the seams.

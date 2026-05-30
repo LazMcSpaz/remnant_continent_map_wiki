@@ -13,6 +13,15 @@ import { buildNetworkGraph, edgeTravelHours, type NetworkGraph } from "./derived
 import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
+import { ClimateOverlay } from "./derived/climate-overlay";
+import { mountClimateControl } from "./derived/climate-control";
+import { climateInputs, temperatureAt, growingWarmth } from "./derived/climate";
+import { updateWorldSettings } from "./layers/features";
+
+const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
+function seasonName(season: number): string {
+  return SEASON_NAMES[Math.round(season * 4) % 4];
+}
 
 function setStatus(text: string, kind: "info" | "error" = "info"): void {
   const el = document.getElementById("status");
@@ -62,18 +71,30 @@ async function boot(): Promise<void> {
     // Tabbed wiki panel. The host is its window into live app state, so the
     // panel can edit, navigate, and refresh without owning data or map state.
     const appEl = document.getElementById("app") ?? document.body;
+    // Derived climate overlay (Phase 2): recomputes from authored inputs.
+    const climate = new ClimateOverlay(map);
+    climate.recompute(data);
+
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
       getGraph: () => graph,
+      getClimate: (detail) => {
+        if (!detail.lngLat) return null;
+        const inp = climateInputs(data.worldSettings);
+        // Locations lack their own elevation; sample the season+latitude field
+        // at sea level (terrain elevation lives on terrain_regions).
+        const tempC = temperatureAt(detail.lngLat, 0, inp);
+        return {
+          tempC,
+          warmth: growingWarmth(tempC),
+          season: inp.season,
+          seasonLabel: seasonName(inp.season),
+        };
+      },
       canEdit: () => hasBackend(),
       setStatus,
       navigateTo: (id) => selectLocation(id),
-      reloadData: async () => {
-        data = await loadFeatures();
-        graph = rebuildGraph(data);
-        updateFeatureData(map, data);
-        setStatus(summarize(data));
-      },
+      reloadData: async () => applyData(await loadFeatures()),
     };
     const wiki = new WikiPanel(appEl, host, () => setSelectedLocation(map, null));
 
@@ -88,14 +109,19 @@ async function boot(): Promise<void> {
 
     onLocationClick(map, selectLocation);
 
-    /** Apply freshly-loaded data everywhere: render, graph, panel, status. */
+    /** Apply freshly-loaded data everywhere: render, graph, climate, panel. */
     const applyData = (next: FeatureData): void => {
       data = next;
       graph = rebuildGraph(next);
       updateFeatureData(map, next);
+      climate.recompute(next);
       if (wiki.isOpen()) wiki.rerenderActive();
       setStatus(summarize(next));
     };
+
+    mountClimate(climate, () => data, () => {
+      if (wiki.isOpen()) wiki.rerenderActive();
+    });
 
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");
@@ -135,6 +161,42 @@ function mountIO(onImported: () => Promise<void>): void {
     setStatus,
     onImported,
     confirm: (message) => window.confirm(message),
+  });
+}
+
+/** Mount the derived-climate control: toggle, metric, season scrubber. */
+function mountClimate(
+  climate: ClimateOverlay,
+  getData: () => FeatureData,
+  onRecompute: () => void,
+): void {
+  const container = document.getElementById("climate-control");
+  if (!container) return;
+  const initial = getData().worldSettings?.season ?? 0;
+  mountClimateControl(container, initial, {
+    canEdit: hasBackend(),
+    onToggle: (visible) => climate.setVisible(visible),
+    onMetric: (metric) => climate.setMetric(metric, getData()),
+    // Live preview: mutate the in-memory season input and recompute the derived
+    // field — no DB round-trip, so scrubbing is smooth. This is the cascade in
+    // action: change an authored input, the derived layer recomputes instantly.
+    onSeasonPreview: (season) => {
+      const ws = getData().worldSettings;
+      if (ws) ws.season = season;
+      climate.recompute(getData());
+      onRecompute();
+    },
+    // Commit to world_settings on release so the change persists.
+    onSeasonCommit: async (season) => {
+      const ws = getData().worldSettings;
+      if (!ws) return;
+      try {
+        await updateWorldSettings(ws.id, { season });
+        setStatus(`Season set to ${season.toFixed(2)}.`);
+      } catch (err) {
+        setStatus(err instanceof Error ? err.message : String(err), "error");
+      }
+    },
   });
 }
 
