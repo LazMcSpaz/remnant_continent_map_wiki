@@ -10,8 +10,6 @@ export interface MapConfig {
   rasterTileUrl: string;
   /** Attribution string for the raster fallback. */
   rasterAttribution: string;
-  /** Glyphs (font PBF) URL — required for any text labels on the raster style. */
-  glyphsUrl: string;
 }
 
 /** Area of interest: the Midwest corridor the fiction maps onto. */
@@ -39,11 +37,5 @@ export function readMapConfig(): MapConfig {
       "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     ),
     rasterAttribution: str(env.VITE_RASTER_ATTRIBUTION, "© OpenStreetMap contributors"),
-    // OpenMapTiles' public font server serves the fonts our labels use
-    // (Open Sans / Noto Sans). Override with VITE_GLYPHS_URL if self-hosting.
-    glyphsUrl: str(
-      env.VITE_GLYPHS_URL,
-      "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
-    ),
   };
 }
