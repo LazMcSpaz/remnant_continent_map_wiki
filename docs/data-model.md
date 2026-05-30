@@ -61,13 +61,40 @@ exported to the client are GeoJSON.
 | `speed_kph` | numeric | used for travel-time computation |
 
 ### `world_settings`
-Singleton (one row, or one per snapshot context).
+Singleton. Global climate + energy **inputs** to the derived model (migrations
+0001, 0007). Move the pole or change a knob and the whole derived climate layer
+recomputes; none of the outputs are stored here.
 | column | type | notes |
 |--------|------|-------|
 | `id` | uuid pk | |
 | `pole_geom` | geometry(Point, 4326) | movable pole for the climate model |
-| `season` | text/numeric | season phase |
-| `global_temp_offset` | numeric | global temperature knob |
+| `season` | numeric | season phase (0..1) |
+| `global_temp_offset` | numeric | global temperature knob (°C) |
+| `axial_tilt_deg` | numeric | planetary axial tilt → seasonal swing |
+| `sea_level_m` | numeric | global sea-level offset (cataclysm) |
+| `equator_temp_c` | numeric | base sea-level temp at the effective equator |
+| `pole_temp_c` | numeric | base sea-level temp at the effective pole |
+| `lapse_rate_c_per_km` | numeric | temperature drop per km elevation |
+| `prevailing_wind_deg` | numeric | prevailing wind bearing → wind energy |
+
+### `terrain_regions` (authored area layer — physical-geography inputs)
+Polygon coverage of inputs future derived tools need (climate field, crop
+suitability, energy potential, hydrology). Migration 0008. **Inputs only** —
+derived scores (temperature, growing-degree-days, solar/wind potential,
+suitability) are computed at runtime, never stored.
+| column | type | notes |
+|--------|------|-------|
+| `id` | uuid pk | |
+| `geom` | geometry(MultiPolygon, 4326) | |
+| `name` | text | nullable label |
+| `elevation_m` | numeric | representative elevation (terrain reshaped by cataclysm) |
+| `slope_deg`, `aspect_deg` | numeric | mean slope / aspect bearing (runoff, solar/wind exposure) |
+| `land_cover` | text | forest\|grassland\|cropland\|wetland\|desert\|urban\|water\|barren\|tundra |
+| `soil_fertility` | numeric | 0..100 authored fertility (crops) |
+| `soil_drainage` | text | poor\|moderate\|well\|excessive |
+| `surface_water` | numeric | 0..100 surface-water availability (crops + city water) |
+| `wind_exposure`, `solar_exposure` | numeric | 0..100 energy-exposure inputs |
+| `attributes` | jsonb | free-form authored extras (no migration per field) |
 
 ### Mask deltas (raster edits over base layers)
 - `elevation_edits` — raster/mask deltas over the base DEM.

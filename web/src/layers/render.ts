@@ -7,12 +7,15 @@ import maplibregl from "maplibre-gl";
 import type { FeatureData } from "./features";
 
 export const SRC = {
+  terrain: "rc-terrain",
   territories: "rc-territories",
   routes: "rc-routes",
   locations: "rc-locations",
 } as const;
 
 const LAYER = {
+  terrainFill: "rc-terrain-fill",
+  terrainLine: "rc-terrain-line",
   territoryFill: "rc-territory-fill",
   territoryLine: "rc-territory-line",
   routeLine: "rc-route-line",
@@ -21,13 +24,48 @@ const LAYER = {
   locationLabel: "rc-location-label",
 } as const;
 
+/** Land-cover fill expression for the authored terrain area layer. */
+const LAND_COVER_FILL: maplibregl.ExpressionSpecification = [
+  "match",
+  ["get", "landCover"],
+  "forest", "#2f6b3f",
+  "grassland", "#7d9b4e",
+  "cropland", "#caa54a",
+  "wetland", "#3f7d7a",
+  "desert", "#c8a06a",
+  "urban", "#7a7a85",
+  "water", "#2b5d8a",
+  "barren", "#8a7d6b",
+  "tundra", "#9aa7a0",
+  "#6b6b75",
+];
+
 /** Whether to show new-world (fiction) or old-world (real) place names. */
 export type NameMode = "new" | "old";
 
 export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMode): void {
+  map.addSource(SRC.terrain, { type: "geojson", data: data.terrain });
   map.addSource(SRC.territories, { type: "geojson", data: data.territories });
   map.addSource(SRC.routes, { type: "geojson", data: data.routes });
   map.addSource(SRC.locations, { type: "geojson", data: data.locations });
+
+  // Terrain (authored area inputs): land-cover fill, drawn beneath everything.
+  // A faint base so it informs without dominating the basemap.
+  map.addLayer({
+    id: LAYER.terrainFill,
+    type: "fill",
+    source: SRC.terrain,
+    paint: {
+      "fill-color": LAND_COVER_FILL,
+      "fill-opacity": 0.22,
+    },
+  });
+  map.addLayer({
+    id: LAYER.terrainLine,
+    type: "line",
+    source: SRC.terrain,
+    paint: { "line-color": "#ffffff", "line-width": 0.5, "line-opacity": 0.25 },
+  });
 
   // Territories: translucent fill + outline, colored by faction.
   map.addLayer({
@@ -137,6 +175,7 @@ export function setNameMode(map: MlMap, mode: NameMode): void {
 
 /** Replace data in place (after an edit/reload) without re-adding layers. */
 export function updateFeatureData(map: MlMap, data: FeatureData): void {
+  (map.getSource(SRC.terrain) as GeoJSONSource | undefined)?.setData(data.terrain);
   (map.getSource(SRC.territories) as GeoJSONSource | undefined)?.setData(data.territories);
   (map.getSource(SRC.routes) as GeoJSONSource | undefined)?.setData(data.routes);
   (map.getSource(SRC.locations) as GeoJSONSource | undefined)?.setData(data.locations);

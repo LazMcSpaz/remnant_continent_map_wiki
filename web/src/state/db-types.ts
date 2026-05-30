@@ -146,3 +146,43 @@ export interface TerritoryGeo {
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }
+
+export type LandCover =
+  | "forest" | "grassland" | "cropland" | "wetland" | "desert"
+  | "urban" | "water" | "barren" | "tundra";
+export type SoilDrainage = "poor" | "moderate" | "well" | "excessive";
+
+/** Authored area layer of physical-geography inputs (migration 0008). */
+export interface TerrainRegionGeo {
+  id: Uuid;
+  geometry: MultiPolygon;
+  name: string | null;
+  elevation_m: number | null;
+  slope_deg: number | null;
+  aspect_deg: number | null;
+  land_cover: LandCover | null;
+  soil_fertility: number | null;
+  soil_drainage: SoilDrainage | null;
+  surface_water: number | null;
+  wind_exposure: number | null;
+  solar_exposure: number | null;
+  attributes: Json;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
+
+/** Global climate/energy inputs (world_settings + migration 0007). */
+export interface WorldSettingsGeo {
+  id: Uuid;
+  pole_geometry: Point | null;
+  season: number;
+  global_temp_offset: number;
+  axial_tilt_deg: number;
+  sea_level_m: number;
+  equator_temp_c: number;
+  pole_temp_c: number;
+  lapse_rate_c_per_km: number;
+  prevailing_wind_deg: number;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}

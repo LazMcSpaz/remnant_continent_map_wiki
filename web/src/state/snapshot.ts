@@ -17,6 +17,7 @@ import {
   createLocation,
   createRoute,
   createTerritory,
+  createTerrainRegion,
   updateLocationFields,
   updateLocationResources,
   addNote,
@@ -44,7 +45,7 @@ export interface Snapshot {
   notes: Array<Pick<Note, "target_type" | "target_id" | "body" | "tags" | "links">>;
 }
 
-type RcLayer = "location" | "route" | "territory";
+type RcLayer = "location" | "route" | "territory" | "terrain";
 
 function feat(
   layer: RcLayer,
@@ -62,17 +63,18 @@ export async function exportSnapshot(): Promise<Snapshot> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — nothing to export.");
 
-  const [factions, travelModes, locs, routes, terrs, world, notes] = await Promise.all([
+  const [factions, travelModes, locs, routes, terrs, terrain, world, notes] = await Promise.all([
     sb.from("factions").select("id,name,color"),
     sb.from("travel_modes").select("id,label,speed_kph"),
     sb.from("locations_geojson").select("*"),
     sb.from("routes_geojson").select("*"),
     sb.from("territories_geojson").select("*"),
+    sb.from("terrain_regions_geojson").select("*"),
     sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
     sb.from("notes").select("target_type,target_id,body,tags,links"),
   ]);
 
-  for (const r of [factions, travelModes, locs, routes, terrs, notes]) {
+  for (const r of [factions, travelModes, locs, routes, terrs, terrain, notes]) {
     if (r.error) throw new Error(`Export failed: ${r.error.message}`);
   }
 
@@ -106,6 +108,15 @@ export async function exportSnapshot(): Promise<Snapshot> {
         style: r.style,
       }),
     );
+  }
+  for (const r of (terrain.data ?? []) as Array<Record<string, unknown>>) {
+    // All physical attributes travel as properties so the area inputs survive
+    // a round-trip; importer recreates geometry + name + attributes (others
+    // are reattachable later, but kept here so nothing is silently dropped).
+    const { id, geometry, created_at, updated_at, ...attrs } = r;
+    void created_at;
+    void updated_at;
+    features.push(feat("terrain", id as string, geometry as Geometry, attrs));
   }
 
   const w = world.data as Record<string, unknown> | null;
@@ -154,6 +165,7 @@ export interface ImportResult {
   locations: number;
   routes: number;
   territories: number;
+  terrain: number;
   notes: number;
   errors: string[];
 }
@@ -174,7 +186,7 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
   }
 
   const result: ImportResult = {
-    factions: 0, travelModes: 0, locations: 0, routes: 0, territories: 0, notes: 0, errors: [],
+    factions: 0, travelModes: 0, locations: 0, routes: 0, territories: 0, terrain: 0, notes: 0, errors: [],
   };
   const factionIdMap = new Map<string, string>();
   const locationIdMap = new Map<string, string>();
@@ -245,6 +257,17 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
           : (f.geometry as Polygon);
         await createTerritory(poly, factionId);
         result.territories++;
+      } else if (layer === "terrain" && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")) {
+        // Recreate geometry + name + the full attribute set (the create RPC
+        // takes only geometry/name/attributes; physical fields ride in the
+        // jsonb `attributes` bag so nothing is dropped on round-trip).
+        const { rcLayer, name, ...rest } = props;
+        void rcLayer;
+        await createTerrainRegion(f.geometry as Polygon, {
+          ...(typeof name === "string" ? { name } : {}),
+          attributes: rest,
+        });
+        result.terrain++;
       }
     } catch (err) {
       result.errors.push(`${layer ?? "feature"}: ${err instanceof Error ? err.message : String(err)}`);

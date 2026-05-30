@@ -16,19 +16,35 @@ import type {
   MultiPolygon,
 } from "geojson";
 import { getSupabase } from "../state/supabase";
-import type { Faction, LocationGeo, RouteGeo, TerritoryGeo, Note } from "../state/db-types";
+import type {
+  Faction,
+  LocationGeo,
+  RouteGeo,
+  TerritoryGeo,
+  TerrainRegionGeo,
+  Note,
+} from "../state/db-types";
 
 export interface FeatureData {
   factions: Map<string, Faction>;
   locations: FeatureCollection<Point | Polygon, LocationProps>;
   routes: FeatureCollection<LineString, RouteProps>;
   territories: FeatureCollection<MultiPolygon, TerritoryProps>;
+  terrain: FeatureCollection<MultiPolygon, TerrainProps>;
   /**
    * Full per-location detail keyed by id, for the wiki panel. Kept separate
    * from GeoJSON `properties` because MapLibre stringifies nested objects
    * (e.g. resource_overrides) when features round-trip through the map.
    */
   locationDetails: Map<string, LocationDetail>;
+}
+
+export interface TerrainProps {
+  id: string;
+  name: string | null;
+  landCover: string | null;
+  elevationM: number | null;
+  soilFertility: number | null;
 }
 
 export interface LocationProps {
@@ -94,18 +110,20 @@ export async function loadFeatures(): Promise<FeatureData> {
     locations: emptyFC<Point | Polygon, LocationProps>(),
     routes: emptyFC<LineString, RouteProps>(),
     territories: emptyFC<MultiPolygon, TerritoryProps>(),
+    terrain: emptyFC<MultiPolygon, TerrainProps>(),
     locationDetails: new Map<string, LocationDetail>(),
   };
   if (!sb) return data;
 
-  const [factionsRes, locationsRes, routesRes, territoriesRes] = await Promise.all([
+  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes] = await Promise.all([
     sb.from("factions").select("*"),
     sb.from("locations_geojson").select("*"),
     sb.from("routes_geojson").select("*"),
     sb.from("territories_geojson").select("*"),
+    sb.from("terrain_regions_geojson").select("*"),
   ]);
 
-  for (const res of [factionsRes, locationsRes, routesRes, territoriesRes]) {
+  for (const res of [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes]) {
     if (res.error) throw new Error(`Supabase load failed: ${res.error.message}`);
   }
 
@@ -176,6 +194,21 @@ export async function loadFeatures(): Promise<FeatureData> {
     }),
   );
 
+  data.terrain.features = ((terrainRes.data ?? []) as TerrainRegionGeo[]).map(
+    (r): Feature<MultiPolygon, TerrainProps> => ({
+      type: "Feature",
+      id: r.id,
+      geometry: r.geometry,
+      properties: {
+        id: r.id,
+        name: r.name,
+        landCover: r.land_cover,
+        elevationM: r.elevation_m,
+        soilFertility: r.soil_fertility,
+      },
+    }),
+  );
+
   return data;
 }
 
@@ -226,6 +259,17 @@ export function createRoute(
 
 export function createTerritory(geometry: Polygon, factionId: string): Promise<unknown> {
   return rpc("create_territory", { geometry, faction_id: factionId });
+}
+
+export function createTerrainRegion(
+  geometry: Polygon | MultiPolygon,
+  opts: { name?: string; attributes?: Record<string, unknown> } = {},
+): Promise<unknown> {
+  return rpc("create_terrain_region", {
+    geometry,
+    name: opts.name ?? null,
+    attributes: opts.attributes ?? {},
+  });
 }
 
 const GEOM_RPC: Record<EditableLayer, string> = {

@@ -33,10 +33,26 @@ src/
   main.ts            app entry: boots the basemap, shows load status
   styles.css         shell styles (dark)
   map/basemap.ts     MapLibre setup; returns { map, ready }
-  layers/            authored features (locations, routes, territories) — next
-  derived/           climate, resource potential, network graph — later
+  layers/            authored features (locations, routes, territories, terrain)
+  derived/           network graph now; climate/resource potential later
   brush/ notes/ state/ sim/   see docs/architecture.md
 ```
+
+## Authored inputs for future tools
+
+The authored layer captures the **inputs** future derived tools need, so they
+can be added later without re-authoring data (see ADR 0003):
+
+- **`terrain_regions`** — an authored area layer of physical geography
+  (elevation, slope/aspect, land cover, soil fertility/drainage, surface water,
+  wind/solar exposure). Rendered as a faint land-cover fill beneath everything.
+  Feeds future crop-suitability, energy-potential, and hydrology derivations.
+- **`world_settings`** — global climate/energy knobs (movable pole, axial tilt,
+  sea level, equator/pole base temps, lapse rate, prevailing wind). Moving the
+  pole is what lets the (future) climate field recompute across the map.
+
+Per the three-layer model, only these inputs are stored; temperature fields,
+growing-degree-days, and suitability scores are derived at runtime.
 
 Feature layers and derived overlays attach to the `map` instance returned by
 `createBasemap()`. The basemap module knows nothing about them — see
