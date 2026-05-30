@@ -273,6 +273,9 @@ body {
   font-size: 0.82rem;
   color: var(--error);
 }
+.login-error[data-kind="info"] {
+  color: var(--text-muted);
+}
 
 /* ---- Terrain editor panel ------------------------------------------------- */
 .terra-panel {
