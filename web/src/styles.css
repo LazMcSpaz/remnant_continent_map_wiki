@@ -215,6 +215,65 @@ body {
   font-style: italic;
 }
 
+/* ---- Login gate (private atlas) ------------------------------------------ */
+.login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+}
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(320px, calc(100% - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.login-title {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.login-sub {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.login-input {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.55rem 0.65rem;
+}
+.login-btn {
+  font: inherit;
+  font-weight: 600;
+  color: #0e1116;
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
+  padding: 0.55rem;
+  cursor: pointer;
+  margin-top: 0.2rem;
+}
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.login-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--error);
+}
+
 /* ---- Terrain editor panel ------------------------------------------------- */
 .terra-panel {
   position: absolute;

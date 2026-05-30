@@ -16,6 +16,8 @@ import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { mountClimateControl } from "./derived/climate-control";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
+import { getSession, onAuthChange, signOut } from "./state/auth";
+import { createLoginGate } from "./state/login-gate";
 import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
 import { deriveCityResources } from "./derived/resources";
 import { updateWorldSettings } from "./layers/features";
@@ -160,6 +162,7 @@ async function boot(): Promise<void> {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");
     } else {
       setStatus(summarize(data));
+      initSignOut();
       mountEditor(map, () => data, applyData);
       mountIO(async () => applyData(await loadFeatures()));
     }
@@ -250,8 +253,63 @@ function initNameToggle(map: MlMap): NameMode {
   return mode;
 }
 
+/**
+ * Entry. The deployed app is fully private: when a backend is configured, the
+ * map only boots after a session exists; otherwise the login gate is shown.
+ * With no backend (local dev sans env), boot directly as an offline viewer.
+ */
+async function init(): Promise<void> {
+  let booted = false;
+  const bootOnce = () => {
+    if (booted) return;
+    booted = true;
+    void boot();
+  };
+
+  if (!hasBackend()) {
+    bootOnce(); // offline viewer; no auth possible
+    return;
+  }
+
+  const appEl = document.getElementById("app") ?? document.body;
+  const gate = createLoginGate(appEl, () => {
+    /* onSignedIn: the auth-change subscription drives the transition */
+  });
+
+  const apply = (hasSession: boolean) => {
+    if (hasSession) {
+      gate.hide();
+      bootOnce();
+    } else if (!booted) {
+      // Only show the gate before first boot; after sign-out we reload (below).
+      gate.show();
+    }
+  };
+
+  // React to future changes (sign-in, token refresh, sign-out).
+  onAuthChange((session) => {
+    if (!session && booted) {
+      // Signed out after using the app — reload to a clean, data-free state.
+      window.location.reload();
+      return;
+    }
+    apply(session !== null);
+  });
+
+  // Initial check (onAuthChange isn't guaranteed to fire immediately).
+  apply((await getSession()) !== null);
+}
+
+/** Wire the header sign-out button (visible once signed in). */
+function initSignOut(): void {
+  const btn = document.getElementById("sign-out");
+  if (!(btn instanceof HTMLButtonElement)) return;
+  btn.hidden = false;
+  btn.addEventListener("click", () => void signOut());
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => void boot());
+  document.addEventListener("DOMContentLoaded", () => void init());
 } else {
-  void boot();
+  void init();
 }

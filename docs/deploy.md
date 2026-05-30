@@ -43,14 +43,15 @@ RLS. The secret `service_role` key must never be set here or committed.
 `dist/_headers`, which Cloudflare Pages applies automatically. It is scoped to
 the app's default sources (Supabase, OSM tiles, MapLibre blob workers/WebGL).
 
-## Supabase CORS / allowed origins
+## Auth (REQUIRED before sharing the URL)
 
-After the first deploy, add the Pages URL(s) to Supabase so the browser client
-is accepted:
+The app is fully private. Before the deployed URL is reachable by others, apply
+the Supabase dashboard settings in **`docs/auth.md`** — most importantly
+**disable public sign-ups** and create your account manually. Without that, any
+visitor could self-register and get full edit access. Also set:
 
-- Supabase → Authentication → URL Configuration → **Site URL** and
-  **Redirect URLs**: add `https://<your-project>.pages.dev` and any custom
-  domain. (Needed once auth lands; see ADR 0002 / the auth-hardening work.)
+- Authentication → URL Configuration → **Site URL** + **Redirect URLs**:
+  `https://<your-project>.pages.dev` and any custom domain.
 
 ## Local production check
 
