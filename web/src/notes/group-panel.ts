@@ -14,6 +14,7 @@ import {
 } from "../layers/features";
 import type { Note } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
+import { TRAVEL_MODES, getTravelMode, setTravelMode, formatHours } from "../derived/travel";
 
 /** A member route, as the panel needs to display it. */
 export interface GroupMemberView {
@@ -106,24 +107,39 @@ export class GroupPanel {
     if (agg.closed) {
       this.bodyEl.append(
         el("p", { className: "route-closed-banner" }, [
-          `⛔ Corridor closed — ${agg.severedCount} of ${agg.memberCount} segments severed.`,
+          `⛔ ${agg.severedCount} of ${agg.memberCount} segments destroyed.`,
         ]),
       );
     }
 
-    // Derived aggregate.
-    const travel = agg.travelHours == null ? "severed" : `${agg.travelHours.toFixed(1)} h`;
+    // Derived aggregate — travel always computes at the current mode.
     this.bodyEl.append(
       el("div", { className: "terra-derived" }, [
         el("h3", { className: "terra-section" }, ["Derived (whole corridor)"]),
         el("div", { className: "terra-derived-row" }, [el("span", {}, [`${agg.lengthKm.toFixed(0)} km`]), el("span", { className: "wiki-muted" }, ["total length"])]),
-        el("div", { className: "terra-derived-row" }, [el("span", {}, [travel]), el("span", { className: "wiki-muted" }, ["end-to-end travel"])]),
+        el("div", { className: "terra-derived-row" }, [el("span", {}, [formatHours(agg.travelHours)]), el("span", { className: "wiki-muted" }, ["end-to-end travel"])]),
+        this.modePicker(),
       ]),
     );
 
     if (this.host.canEdit()) this.bodyEl.append(this.editForm(group));
     this.bodyEl.append(this.membersSection(this.currentId));
     this.bodyEl.append(this.notesSection(this.currentId));
+  }
+
+  private modePicker(): HTMLElement {
+    const sel = el("select", { className: "terra-input" });
+    const cur = getTravelMode();
+    for (const m of TRAVEL_MODES) {
+      const opt = el("option", { value: m.id }, [`${m.label} — ${m.mph} mph`]);
+      if (m.id === cur.id) opt.selected = true;
+      sel.append(opt);
+    }
+    sel.addEventListener("change", () => {
+      setTravelMode(sel.value);
+      this.refresh();
+    });
+    return el("label", { className: "terra-field" }, [el("span", { className: "terra-label" }, ["Travel mode"]), sel]);
   }
 
   private editForm(group: RouteGroup): HTMLElement {

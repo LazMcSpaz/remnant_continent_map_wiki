@@ -44,9 +44,9 @@ function setStatus(text: string, kind: "info" | "error" = "info"): void {
 /** Recompute and log the derived network graph from current feature data. */
 function rebuildGraph(data: FeatureData): NetworkGraph {
   const graph = buildNetworkGraph(data.locations, data.routes);
-  const reachable = graph.edges.filter((e) => edgeTravelHours(e) !== null).length;
+  const intact = graph.edges.filter((e) => e.status !== "destroyed").length;
   console.info(
-    `[graph] ${graph.nodes.length} nodes, ${graph.edges.length} edges (${reachable} passable).`,
+    `[graph] ${graph.nodes.length} nodes, ${graph.edges.length} edges (${intact} not destroyed).`,
   );
   (window as unknown as { __graph?: unknown }).__graph = graph;
   return graph;
@@ -158,7 +158,7 @@ async function boot(): Promise<void> {
       return {
         props: f.properties,
         lengthKm: edge?.lengthKm ?? null,
-        travelHours: edge ? edgeTravelHours(edge) : null,
+        travelHours: edge ? edgeTravelHours(edge) : 0,
       };
     };
     const routeHost: RouteHost = {
@@ -218,7 +218,7 @@ async function boot(): Promise<void> {
         memberIdsOf(id).map((rid) => {
           const f = data.routes.features.find((ff) => ff.properties.id === rid);
           const edge = graph.edges.find((e) => e.routeId === rid);
-          const severed = edge ? edgeTravelHours(edge) === null : false;
+          const severed = edge ? edge.status === "destroyed" : false;
           const p = f?.properties;
           return { routeId: rid, label: p ? `${p.routeClass} ${p.kind}` : "route", severed };
         }),

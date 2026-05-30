@@ -37,8 +37,6 @@ export interface FeatureData {
   terrain: FeatureCollection<MultiPolygon, TerrainProps>;
   /** Break markers (points on routes) for rendering, styled by kind. */
   breaks: FeatureCollection<Point, BreakProps>;
-  /** Route ids closed by ≥1 active break (drives `closed` + graph severing). */
-  closedRouteIds: Set<string>;
   /** All break rows, for the route panel's per-route break list. */
   routeBreaks: RouteBreakGeo[];
   /** Named corridors and their members (many-to-many). */
@@ -91,8 +89,6 @@ export interface RouteProps {
   kind: RouteGeo["kind"];
   status: RouteGeo["status"];
   routeClass: RouteGeo["route_class"];
-  /** Closed by ≥1 active break — impassable in the graph, dashed on the map. */
-  closed: boolean;
   ownerFactionId: string | null;
   ownerColor: string;
   purpose: string | null;
@@ -140,7 +136,6 @@ export async function loadFeatures(): Promise<FeatureData> {
     territories: emptyFC<MultiPolygon, TerritoryProps>(),
     terrain: emptyFC<MultiPolygon, TerrainProps>(),
     breaks: emptyFC<Point, BreakProps>(),
-    closedRouteIds: new Set<string>(),
     routeBreaks: [],
     routeGroups: [],
     groupMembers: [],
@@ -170,10 +165,8 @@ export async function loadFeatures(): Promise<FeatureData> {
   data.routeGroups = (groupsRes.data ?? []) as RouteGroup[];
   data.groupMembers = (membersRes.data ?? []) as RouteGroupMember[];
 
-  // Breaks: build the closed-route set (any active break closes its route) and
-  // the break marker collection.
+  // Breaks are annotations on routes (markers); they do not close the route.
   data.routeBreaks = (breaksRes.data ?? []) as RouteBreakGeo[];
-  for (const b of data.routeBreaks) if (b.active) data.closedRouteIds.add(b.route_id);
   data.breaks.features = data.routeBreaks.map((b) => ({
     type: "Feature",
     id: b.id,
@@ -229,7 +222,6 @@ export async function loadFeatures(): Promise<FeatureData> {
         kind: r.kind,
         status: r.status,
         routeClass: r.route_class,
-        closed: data.closedRouteIds.has(r.id),
         ownerFactionId: r.owner_faction_id,
         ownerColor: colorOf(r.owner_faction_id),
         purpose: r.purpose,
