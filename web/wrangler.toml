@@ -1,18 +1,16 @@
 #:schema node_modules/wrangler/config-schema.json
 # Cloudflare Worker (static assets) config for the Remnant Continent atlas.
 #
-# This is a *static-asset* Worker: there is no `main` Worker script, just the
-# built SPA in ./dist. The Git build runs `npm run build` (root dir = web),
-# producing web/dist, then `npx wrangler deploy` uploads it using this config.
+# IMPORTANT: the assets directory is supplied on the DEPLOY COMMAND, not here:
 #
-# Without this file the deploy serves the raw repo (e.g. src/main.ts), which the
-# browser can't run — hence the "MIME type video/mp2t" error on the .ts source.
+#     npx wrangler deploy --assets=./dist
+#
+# The Git build runs `npm run build` (Root directory = web) → web/dist, then the
+# deploy uploads ./dist. We deliberately do NOT put an [assets] block here:
+# wrangler 4 forbids using the --assets flag together with [assets] in config,
+# and the flag is what reliably points at the build output. Without the flag the
+# deploy uploads the whole web/ folder (source + node_modules) and serves
+# src/main.ts — which the browser can't run (MIME type video/mp2t).
 
 name = "remnant-continent-atlas"
 compatibility_date = "2025-05-01"
-
-[assets]
-directory = "./dist"
-# SPA-style: serve index.html for any unmatched path. (Routing is hash-based, so
-# this mostly guards deep links / refreshes.) Hashed /assets/* are served as-is.
-not_found_handling = "single-page-application"
