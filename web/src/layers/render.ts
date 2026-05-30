@@ -108,20 +108,16 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
   const routeWidth: maplibregl.ExpressionSpecification = [
     "match", ["get", "routeClass"], "major", 4, "minor", 2.5, "secret", 1.5, 2.5,
   ];
-  // Closed/destroyed routes are dim; secret routes a bit faint.
+  // Destroyed routes are dim; secret routes a bit faint. (Breaks don't dim.)
   const routeOpacity: maplibregl.ExpressionSpecification = [
     "case",
-    ["any", ["==", ["get", "status"], "destroyed"], ["get", "closed"]], 0.35,
+    ["==", ["get", "status"], "destroyed"], 0.35,
     ["==", ["get", "routeClass"], "secret"], 0.6,
     1,
   ];
-  // Solid only when intact AND open; dashed when not-intact OR closed by a break.
-  const openIntact: maplibregl.ExpressionSpecification = [
-    "all", ["==", ["get", "status"], "intact"], ["!", ["get", "closed"]],
-  ];
-  const brokenOrDamaged: maplibregl.ExpressionSpecification = [
-    "any", ["!=", ["get", "status"], "intact"], ["get", "closed"],
-  ];
+  // Solid when intact; dashed when damaged/destroyed (status only).
+  const openIntact: maplibregl.ExpressionSpecification = ["==", ["get", "status"], "intact"];
+  const brokenOrDamaged: maplibregl.ExpressionSpecification = ["!=", ["get", "status"], "intact"];
 
   // Selection halo for routes, drawn beneath the route lines.
   map.addLayer({
@@ -221,12 +217,12 @@ let labelMode: NameMode = "new";
 let labelsVisible = true;
 
 /** Feature groups that can be toggled as whole layers from the layers panel. */
-export type LayerGroup = "terrain" | "territories" | "routes" | "breaks" | "labels";
+export type LayerGroup = "terrain" | "territories" | "routes" | "labels";
 const GROUP_LAYERS: Record<LayerGroup, string[]> = {
   terrain: [LAYER.terrainFill, LAYER.terrainLine, LAYER.terrainHighlight],
   territories: [LAYER.territoryFill, LAYER.territoryLine],
-  routes: [LAYER.routeLine, LAYER.routeLineDashed, LAYER.routeHighlight],
-  breaks: [LAYER.breakPoints],
+  // Breaks ride with routes — there's no reason to see breaks without routes.
+  routes: [LAYER.routeLine, LAYER.routeLineDashed, LAYER.routeHighlight, LAYER.breakPoints],
   labels: [],
 };
 
@@ -327,21 +323,34 @@ export function setSelectedLocation(map: MlMap, locationId: string | null): void
 }
 
 /** Register a handler fired with the route id when a route line is clicked. */
+/** Routes within a few px of a screen point — a generous click target since
+ *  lines are thin. Exported so terrain clicks can yield to routes. */
+const ROUTE_HIT_TOL = 6;
+function routesNear(map: MlMap, point: maplibregl.PointLike & { x: number; y: number }) {
+  const layers = [LAYER.routeLine, LAYER.routeLineDashed].filter((id) => map.getLayer(id));
+  if (layers.length === 0) return [];
+  const t = ROUTE_HIT_TOL;
+  return map.queryRenderedFeatures(
+    [
+      [point.x - t, point.y - t],
+      [point.x + t, point.y + t],
+    ],
+    { layers },
+  );
+}
+
 export function onRouteClick(map: MlMap, handler: (routeId: string) => void): void {
-  const onClick = (e: maplibregl.MapMouseEvent) => {
+  map.on("click", (e) => {
     // Don't steal clicks meant for a city marker on top of the line.
     if (map.getLayer(LAYER.locationCircle)) {
       const onCity = map.queryRenderedFeatures(e.point, { layers: [LAYER.locationCircle] });
       if (onCity.length > 0) return;
     }
-    const hit = map.queryRenderedFeatures(e.point, {
-      layers: [LAYER.routeLine, LAYER.routeLineDashed].filter((id) => map.getLayer(id)),
-    });
+    const hit = routesNear(map, e.point);
     const id = hit[0]?.properties?.id;
     if (typeof id === "string") handler(id);
-  };
+  });
   for (const layer of [LAYER.routeLine, LAYER.routeLineDashed]) {
-    map.on("click", layer, onClick);
     map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
     map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
   }
@@ -371,6 +380,9 @@ export function onTerrainClick(map: MlMap, handler: (terrainId: string) => void)
       const onCity = map.queryRenderedFeatures(e.point, { layers: [LAYER.locationCircle] });
       if (onCity.length > 0) return;
     }
+    // Routes sit on top of terrain — yield to a nearby route so the easier route
+    // click target wins.
+    if (routesNear(map, e.point).length > 0) return;
     const f = e.features?.[0];
     const id = f?.properties?.id;
     if (typeof id === "string") handler(id);

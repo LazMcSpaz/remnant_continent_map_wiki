@@ -69,30 +69,34 @@ pixel-hunting between overlapping features.
 
 ## Routes
 
-- **Drawing** road routes snaps them to real roads via OSRM (between the
-  vertices you click); rail/trail are hand-traced. Configure the routing server
-  with `VITE_OSRM_URL`.
+- **Creating** a route is a guided wizard: **+ Route** → place the **start**
+  then the **end** (clicks snap to nearby cities and route endpoints) → choose
+  **Follow roads** (OSRM road-snapped) or **Landship route** (hover path that
+  routes *around* forest + mountain terrain) → pick the **owning faction**.
+  Landship barriers are terrain regions that are forest, high-elevation
+  (≥1500 m), or steep (≥15°), so landship routing sharpens as you author more
+  terrain. Configure the OSRM server with `VITE_OSRM_URL`.
 - **Click a route** to open its panel: edit class (**major/minor/secret**),
-  status, kind, and purpose; see derived length + travel time; read/add/delete
-  notes. Class feeds the network graph (major = faster/higher capacity, secret =
-  slower) and the on-map styling (major thicker, secret fainter).
+  status, kind, and purpose; see derived length + **travel time**, which always
+  computes and updates with the chosen **travel mode** (on foot, caravan,
+  mounted, landship, motorized, rail — each with a stylized mph). Read/add/delete
+  notes. Class feeds graph capacity and on-map styling (major thicker, secret
+  fainter). The route click target is widened a few px so thin lines are easy to
+  select.
 - **Breaks** — in a route's panel, choose a kind (**natural / blockade / toll**)
   and "Place break", then click the spot on the route; the point snaps onto the
-  line. An active break **closes** the route — it's severed in the network graph
-  (travel time → severed) and drawn dashed/faded, without deleting the route.
-  Breaks can be lifted (made inactive) or deleted, and show as kind-colored dots
-  on the line (toggle via the "Route breaks" layer).
+  line. Breaks are **annotations** — markers that record a barrier/toll. They do
+  **not** close the route or stop travel time; lift or delete them as needed.
+  They ride on the Routes layer (no separate toggle).
 - **Corridors (route groups)** — the **Corridors** panel (top-left) lists named
   corridors and has "New corridor": name it, then click route segments to add
   them (Esc to finish). A corridor's panel shows its derived **total length and
-  end-to-end travel**, its **segments**, labels, and notes. A corridor is marked
-  **closed** if *any* member segment is severed (active break or destroyed) — so
-  one blockade closes the whole named route — shown by a red dot in the list and
-  a banner in the panel.
+  end-to-end travel** (at the current mode), its **segments**, labels, and notes.
+  A corridor flags as closed only if a member segment is physically **destroyed**.
 
-> Note: route breaks and corridors are not yet part of Save/Export (that bundle
-> currently covers features, factions, world settings, terrain, and notes).
-> Worth adding to the snapshot next.
+The whole route system — segments, classes, breaks, and corridors — is included
+in Save / Export and restored on Import (ids remapped, breaks re-snapped onto
+their routes, corridor membership rebuilt).
 
 ## Derived climate cascade (Phase 2)
 
@@ -170,7 +174,7 @@ Header buttons (when a backend is configured):
 
 - **Save** — download the whole authored layer as a `.json` snapshot: a GeoJSON
   FeatureCollection (each feature tagged with `rcLayer`) plus a state blob for
-  factions, travel modes, world settings, and notes.
+  factions, travel modes, world settings, notes, route breaks, and corridors.
 - **Export GeoJSON** — download just the spatial features as a plain `.geojson`
   for other GIS tools.
 - **Import** — load a snapshot file; features are **appended** to the current

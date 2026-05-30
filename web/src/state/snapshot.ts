@@ -20,16 +20,40 @@ import {
   createTerrainRegion,
   updateLocationFields,
   updateLocationResources,
+  updateRouteFields,
+  addRouteBreak,
+  setRouteBreakActive,
+  createRouteGroup,
+  addRouteGroupMember,
   addNote,
 } from "../layers/features";
 
-export const SNAPSHOT_VERSION = 1;
+// Snapshot v2 adds route breaks + corridors (route groups). v1 bundles (no such
+// fields) still import fine — the new arrays default to empty.
+export const SNAPSHOT_VERSION = 2;
 export const SNAPSHOT_KIND = "remnant-continent-atlas/authored";
 
 export interface WorldSettingsExport {
   pole: Point | null;
   season: number;
   globalTempOffset: number;
+}
+
+export interface BreakExport {
+  routeId: string; // old route id (remapped on import)
+  geometry: Point;
+  kind: string;
+  label: string | null;
+  active: boolean;
+}
+export interface GroupExport {
+  id: string; // old group id (remapped on import)
+  name: string;
+  labels: string[];
+}
+export interface GroupMemberExport {
+  groupId: string;
+  routeId: string;
 }
 
 /** The full authored-layer bundle. `features` carries one layer per feature
@@ -43,6 +67,9 @@ export interface Snapshot {
   travelModes: Array<Pick<TravelMode, "id" | "label" | "speed_kph">>;
   worldSettings: WorldSettingsExport | null;
   notes: Array<Pick<Note, "target_type" | "target_id" | "body" | "tags" | "links">>;
+  routeBreaks: BreakExport[];
+  routeGroups: GroupExport[];
+  groupMembers: GroupMemberExport[];
 }
 
 type RcLayer = "location" | "route" | "territory" | "terrain";
@@ -63,18 +90,22 @@ export async function exportSnapshot(): Promise<Snapshot> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — nothing to export.");
 
-  const [factions, travelModes, locs, routes, terrs, terrain, world, notes] = await Promise.all([
-    sb.from("factions").select("id,name,color"),
-    sb.from("travel_modes").select("id,label,speed_kph"),
-    sb.from("locations_geojson").select("*"),
-    sb.from("routes_geojson").select("*"),
-    sb.from("territories_geojson").select("*"),
-    sb.from("terrain_regions_geojson").select("*"),
-    sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
-    sb.from("notes").select("target_type,target_id,body,tags,links"),
-  ]);
+  const [factions, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members] =
+    await Promise.all([
+      sb.from("factions").select("id,name,color"),
+      sb.from("travel_modes").select("id,label,speed_kph"),
+      sb.from("locations_geojson").select("*"),
+      sb.from("routes_geojson").select("*"),
+      sb.from("territories_geojson").select("*"),
+      sb.from("terrain_regions_geojson").select("*"),
+      sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
+      sb.from("notes").select("target_type,target_id,body,tags,links"),
+      sb.from("route_breaks_geojson").select("*"),
+      sb.from("route_groups").select("id,name,labels"),
+      sb.from("route_group_members").select("group_id,route_id"),
+    ]);
 
-  for (const r of [factions, travelModes, locs, routes, terrs, terrain, notes]) {
+  for (const r of [factions, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members]) {
     if (r.error) throw new Error(`Export failed: ${r.error.message}`);
   }
 
@@ -96,6 +127,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
       feat("route", r.id as string, r.geometry as Geometry, {
         kind: r.kind,
         status: r.status,
+        route_class: r.route_class,
         owner_faction_id: r.owner_faction_id,
         purpose: r.purpose,
       }),
@@ -137,6 +169,22 @@ export async function exportSnapshot(): Promise<Snapshot> {
     travelModes: (travelModes.data ?? []) as Snapshot["travelModes"],
     worldSettings,
     notes: (notes.data ?? []) as Snapshot["notes"],
+    routeBreaks: ((breaks.data ?? []) as Array<Record<string, unknown>>).map((b) => ({
+      routeId: b.route_id as string,
+      geometry: b.geometry as Point,
+      kind: String(b.kind),
+      label: (b.label as string | null) ?? null,
+      active: Boolean(b.active),
+    })),
+    routeGroups: ((groups.data ?? []) as Array<Record<string, unknown>>).map((g) => ({
+      id: g.id as string,
+      name: String(g.name),
+      labels: (g.labels as string[]) ?? [],
+    })),
+    groupMembers: ((members.data ?? []) as Array<Record<string, unknown>>).map((m) => ({
+      groupId: m.group_id as string,
+      routeId: m.route_id as string,
+    })),
   };
 }
 
@@ -166,6 +214,8 @@ export interface ImportResult {
   routes: number;
   territories: number;
   terrain: number;
+  breaks: number;
+  corridors: number;
   notes: number;
   errors: string[];
 }
@@ -186,10 +236,13 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
   }
 
   const result: ImportResult = {
-    factions: 0, travelModes: 0, locations: 0, routes: 0, territories: 0, terrain: 0, notes: 0, errors: [],
+    factions: 0, travelModes: 0, locations: 0, routes: 0, territories: 0, terrain: 0,
+    breaks: 0, corridors: 0, notes: 0, errors: [],
   };
   const factionIdMap = new Map<string, string>();
   const locationIdMap = new Map<string, string>();
+  const routeIdMap = new Map<string, string>();
+  const groupIdMap = new Map<string, string>();
 
   // Factions first (locations/routes/territories reference them).
   for (const f of snap.factions) {
@@ -239,12 +292,17 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
         result.locations++;
       } else if (layer === "route" && f.geometry.type === "LineString") {
         const ownerFactionId = remapFaction(props.owner_faction_id);
-        await createRoute(f.geometry as LineString, {
+        const newId = (await createRoute(f.geometry as LineString, {
           kind: typeof props.kind === "string" ? props.kind : "road",
           status: typeof props.status === "string" ? props.status : "intact",
           ...(ownerFactionId ? { ownerFactionId } : {}),
           ...(typeof props.purpose === "string" ? { purpose: props.purpose } : {}),
-        });
+        })) as string;
+        if (typeof f.id === "string" && typeof newId === "string") routeIdMap.set(f.id, newId);
+        // route_class isn't a create_route argument; set it after.
+        if (typeof newId === "string" && typeof props.route_class === "string") {
+          await updateRouteFields(newId, { route_class: props.route_class });
+        }
         result.routes++;
       } else if (layer === "territory" && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")) {
         const factionId = remapFaction(props.faction_id);
@@ -274,15 +332,52 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
     }
   }
 
-  // Notes, with target ids remapped to the newly-created locations. Only
-  // location-targeted notes whose target was imported are re-attached; other
-  // targets aren't created by this importer yet, so those notes are skipped.
+  // Breaks: re-snap each break onto its (newly-created) route, then lift it if
+  // it was inactive. (v1 snapshots have no breaks → empty.)
+  for (const b of snap.routeBreaks ?? []) {
+    const newRoute = routeIdMap.get(b.routeId);
+    if (!newRoute) continue;
+    try {
+      const newBreakId = (await addRouteBreak(newRoute, b.geometry, b.kind, b.label ?? undefined)) as string;
+      if (!b.active && typeof newBreakId === "string") await setRouteBreakActive(newBreakId, false);
+      result.breaks++;
+    } catch (err) {
+      result.errors.push(`break: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Corridors + members (remap group + route ids).
+  for (const g of snap.routeGroups ?? []) {
+    try {
+      const newGid = await createRouteGroup(g.name, [], g.labels ?? []);
+      groupIdMap.set(g.id, newGid);
+      result.corridors++;
+    } catch (err) {
+      result.errors.push(`corridor "${g.name}": ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  for (const m of snap.groupMembers ?? []) {
+    const newGid = groupIdMap.get(m.groupId);
+    const newRid = routeIdMap.get(m.routeId);
+    if (!newGid || !newRid) continue;
+    try {
+      await addRouteGroupMember(newGid, newRid);
+    } catch (err) {
+      result.errors.push(`corridor member: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Notes, with target ids remapped. Locations, routes, and corridors are
+  // re-attached (those targets are recreated); other target types are skipped.
   for (const n of snap.notes) {
-    if (n.target_type !== "location" || typeof n.target_id !== "string") continue;
-    const targetId = locationIdMap.get(n.target_id);
+    if (typeof n.target_id !== "string") continue;
+    let targetId: string | undefined;
+    if (n.target_type === "location") targetId = locationIdMap.get(n.target_id);
+    else if (n.target_type === "route") targetId = routeIdMap.get(n.target_id);
+    else if (n.target_type === "route_group") targetId = groupIdMap.get(n.target_id);
     if (!targetId) continue;
     try {
-      await addNote("location", targetId, n.body, n.tags ?? []);
+      await addNote(n.target_type, targetId, n.body, n.tags ?? []);
       result.notes++;
     } catch (err) {
       result.errors.push(`note: ${err instanceof Error ? err.message : String(err)}`);

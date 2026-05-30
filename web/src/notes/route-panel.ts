@@ -7,6 +7,7 @@ import type { RouteProps } from "../layers/features";
 import { updateRouteFields, loadNotesFor, addNote, deleteNote } from "../layers/features";
 import type { Note, RouteBreakGeo } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
+import { TRAVEL_MODES, getTravelMode, setTravelMode, formatHours } from "../derived/travel";
 
 export interface RouteDetail {
   props: RouteProps;
@@ -109,25 +110,37 @@ export class RoutePanel {
     this.titleEl.textContent = `${p.routeClass} ${p.kind}`;
     this.bodyEl.replaceChildren();
 
-    // Derived readout.
-    const travel = d.travelHours == null ? "severed" : `${d.travelHours.toFixed(1)} h`;
+    // Derived readout + travel-mode picker (travel always computes).
     const len = d.lengthKm == null ? "—" : `${d.lengthKm.toFixed(0)} km`;
+    const travel = d.travelHours == null ? "—" : formatHours(d.travelHours);
     this.bodyEl.append(
       el("div", { className: "terra-derived" }, [
         el("h3", { className: "terra-section" }, ["Derived"]),
         el("div", { className: "terra-derived-row" }, [el("span", {}, [len]), el("span", { className: "wiki-muted" }, ["length"])]),
         el("div", { className: "terra-derived-row" }, [el("span", {}, [travel]), el("span", { className: "wiki-muted" }, ["travel time"])]),
+        this.modePicker(),
       ]),
     );
 
-    if (d.props.closed) {
-      this.bodyEl.append(
-        el("p", { className: "route-closed-banner" }, ["⛔ Closed by an active break."]),
-      );
-    }
     if (this.host.canEdit()) this.bodyEl.append(this.editForm(d.props));
     this.bodyEl.append(this.breaksSection(this.currentId));
     this.bodyEl.append(this.notesSection(this.currentId));
+  }
+
+  /** Travel-mode picker — changing it recomputes the travel time everywhere. */
+  private modePicker(): HTMLElement {
+    const sel = el("select", { className: "terra-input" });
+    const cur = getTravelMode();
+    for (const m of TRAVEL_MODES) {
+      const opt = el("option", { value: m.id }, [`${m.label} — ${m.mph} mph`]);
+      if (m.id === cur.id) opt.selected = true;
+      sel.append(opt);
+    }
+    sel.addEventListener("change", () => {
+      setTravelMode(sel.value);
+      this.refresh();
+    });
+    return el("label", { className: "terra-field" }, [el("span", { className: "terra-label" }, ["Travel mode"]), sel]);
   }
 
   private breaksSection(routeId: string): HTMLElement {

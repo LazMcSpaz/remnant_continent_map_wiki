@@ -13,6 +13,7 @@
 import type { FeatureCollection, Point, Polygon, LineString, Position } from "geojson";
 import type { LocationProps, RouteProps } from "../layers/features";
 import type { RouteStatus } from "../state/db-types";
+import { travelHours } from "./travel";
 
 export interface GraphNode {
   id: string;
@@ -31,8 +32,6 @@ export interface GraphEdge {
   speed: number; // km/h, by route kind (placeholder until travel_modes wired)
   capacity: number; // placeholder; Phase 2 derives from kind/status
   status: RouteStatus;
-  /** Closed by an active break — impassable even when status is intact. */
-  closed: boolean;
   /** Geodesic length in kilometers. */
   lengthKm: number;
 }
@@ -152,7 +151,6 @@ export function buildNetworkGraph(
       speed: (KIND_SPEED[props.kind] ?? 50) * (CLASS_SPEED[props.routeClass] ?? 1),
       capacity: props.routeClass === "major" ? 3 : props.routeClass === "minor" ? 2 : 1,
       status: props.status,
-      closed: props.closed,
       lengthKm: lineLengthKm(coords),
     });
   }
@@ -160,51 +158,43 @@ export function buildNetworkGraph(
   return { nodes: [...nodes.values()], edges };
 }
 
-/**
- * Travel time (hours) along an edge for its kind speed, or null when the edge is
- * impassable (destroyed). Damaged edges are penalized. This is the derived
- * travel-time readout routes/UI will surface.
- */
-export function edgeTravelHours(edge: GraphEdge): number | null {
-  if (edge.status === "destroyed" || edge.closed) return null; // severed
-  const speed = edge.speed * (edge.status === "damaged" ? 0.5 : 1);
-  if (speed <= 0) return null;
-  return edge.lengthKm / speed;
+/** Travel time (hours) along an edge for the current travel mode + route
+ *  status. Always computes — breaks never sever travel (they're annotations). */
+export function edgeTravelHours(edge: GraphEdge): number {
+  return travelHours(edge.lengthKm, edge.status);
 }
 
 export interface GroupAggregate {
   lengthKm: number;
-  /** Sum of member travel times, or null when the corridor is closed. */
-  travelHours: number | null;
-  /** True if ANY member route is severed — one break closes the corridor. */
+  /** Sum of member travel times at the current mode — always computed. */
+  travelHours: number;
+  /** True if any member is physically destroyed (not from breaks). */
   closed: boolean;
   memberCount: number;
   severedCount: number;
 }
 
 /**
- * Aggregate a corridor's derived state from its member routes. A corridor is
- * closed if any member is severed (active break or destroyed), and its travel
- * time is then null — you can't traverse the named route end-to-end.
+ * Aggregate a corridor's derived state. Travel time always computes (sum of
+ * member times). "Closed" reflects physically destroyed segments only — breaks
+ * are annotations and do not close a corridor.
  */
 export function aggregateGroup(memberRouteIds: string[], graph: NetworkGraph): GroupAggregate {
   let lengthKm = 0;
   let travel = 0;
-  let severed = 0;
+  let destroyed = 0;
   for (const rid of memberRouteIds) {
     const edge = graph.edges.find((e) => e.routeId === rid);
     if (!edge) continue;
     lengthKm += edge.lengthKm;
-    const h = edgeTravelHours(edge);
-    if (h === null) severed += 1;
-    else travel += h;
+    travel += travelHours(edge.lengthKm, edge.status);
+    if (edge.status === "destroyed") destroyed += 1;
   }
-  const closed = severed > 0;
   return {
     lengthKm,
-    travelHours: closed ? null : travel,
-    closed,
+    travelHours: travel,
+    closed: destroyed > 0,
     memberCount: memberRouteIds.length,
-    severedCount: severed,
+    severedCount: destroyed,
   };
 }

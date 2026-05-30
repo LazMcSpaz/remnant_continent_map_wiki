@@ -481,6 +481,75 @@ body {
   flex: 1;
 }
 
+/* Route creation wizard */
+.wizard-card {
+  position: absolute;
+  top: 0.8rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  width: min(420px, calc(100% - 1.2rem));
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  padding: 0.8rem 1rem;
+}
+.wizard-title {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+.wizard-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.wizard-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.wizard-row .wiki-btn {
+  flex: 1;
+}
+.wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+.wizard-faction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.wizard-faction {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  text-align: left;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+.wizard-faction:hover {
+  border-color: var(--accent);
+}
+.wizard-pin {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 2px solid #0e1116;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
 /* Corridors list */
 .corridor-item {
   display: flex;
