@@ -83,6 +83,40 @@ body {
 #map {
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+/* Floating editor toolbar, overlaid on the map's top-left. */
+.editor-toolbar {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.tool-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+.tool-btn:hover {
+  border-color: var(--border);
+}
+.tool-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: #0e1116;
 }
 
 /* Tone MapLibre's default controls toward the dark shell. */

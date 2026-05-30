@@ -41,3 +41,18 @@ src/
 Feature layers and derived overlays attach to the `map` instance returned by
 `createBasemap()`. The basemap module knows nothing about them — see
 `docs/architecture.md` for the three-layer model and the seams.
+
+## Editing
+
+With a backend configured, a floating toolbar (top-left of the map) enables
+Terra Draw editing of the authored layer:
+
+- **+ Location** — click to drop a point; you're prompted for new-world and
+  old-world names.
+- **+ Route** — click vertices, double-click to finish a line.
+- **+ Territory** — click vertices, double-click to finish a polygon (assigned
+  to the first faction for now).
+
+Geometry is written to Supabase via `create_*` RPCs (GeoJSON → PostGIS), then
+the authored data reloads and the derived network graph rebuilds. Without a
+backend the toolbar stays hidden and the app is read-only.

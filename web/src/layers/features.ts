@@ -129,3 +129,79 @@ export async function loadFeatures(): Promise<FeatureData> {
 
   return data;
 }
+
+// --- Writes (authored edits) ------------------------------------------------
+// Geometry inserts/updates go through RPCs (migration 0004) because PostgREST
+// can't convert GeoJSON to PostGIS directly. Deletes use plain PostgREST.
+// All return/throw; callers reload via loadFeatures() to refresh derived state.
+
+export type EditableLayer = "location" | "route" | "territory";
+
+/** True when writes are possible (a backend is configured). */
+export { hasBackend } from "../state/supabase";
+
+async function rpc(fn: string, args: Record<string, unknown>): Promise<unknown> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw new Error(`${fn} failed: ${error.message}`);
+  return data;
+}
+
+export function createLocation(
+  geometry: Point,
+  name: string,
+  opts: { oldWorldName?: string; type?: string; factionId?: string } = {},
+): Promise<unknown> {
+  return rpc("create_location", {
+    geometry,
+    name,
+    old_world_name: opts.oldWorldName ?? null,
+    type: opts.type ?? "settlement",
+    faction_id: opts.factionId ?? null,
+  });
+}
+
+export function createRoute(
+  geometry: LineString,
+  opts: { kind?: string; status?: string; ownerFactionId?: string; purpose?: string } = {},
+): Promise<unknown> {
+  return rpc("create_route", {
+    geometry,
+    kind: opts.kind ?? "road",
+    status: opts.status ?? "intact",
+    owner_faction_id: opts.ownerFactionId ?? null,
+    purpose: opts.purpose ?? null,
+  });
+}
+
+export function createTerritory(geometry: Polygon, factionId: string): Promise<unknown> {
+  return rpc("create_territory", { geometry, faction_id: factionId });
+}
+
+const GEOM_RPC: Record<EditableLayer, string> = {
+  location: "update_location_geometry",
+  route: "update_route_geometry",
+  territory: "update_territory_geometry",
+};
+
+export function updateGeometry(
+  layer: EditableLayer,
+  id: string,
+  geometry: Point | LineString | Polygon,
+): Promise<unknown> {
+  return rpc(GEOM_RPC[layer], { id, geometry });
+}
+
+const TABLE: Record<EditableLayer, string> = {
+  location: "locations",
+  route: "routes",
+  territory: "territories",
+};
+
+export async function deleteFeature(layer: EditableLayer, id: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from(TABLE[layer]).delete().eq("id", id);
+  if (error) throw new Error(`delete ${layer} failed: ${error.message}`);
+}
