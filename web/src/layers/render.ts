@@ -20,6 +20,7 @@ const LAYER = {
   territoryFill: "rc-territory-fill",
   territoryLine: "rc-territory-line",
   routeLine: "rc-route-line",
+  routeLineDashed: "rc-route-line-dashed",
   locationCircle: "rc-location-circle",
   locationHighlight: "rc-location-highlight",
   locationLabel: "rc-location-label",
@@ -90,30 +91,39 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     paint: { "line-color": ["get", "factionColor"], "line-width": 1.5, "line-opacity": 0.7 },
   });
 
-  // Routes: width by kind, dashed when damaged, faded+dashed when destroyed.
+  // Routes. line-dasharray can't be data-driven in MapLibre, so we use two
+  // layers with mutually-exclusive status filters: intact = solid, everything
+  // else = dashed (and destroyed is also faded via opacity).
+  const routeColor: maplibregl.ExpressionSpecification = [
+    "match",
+    ["get", "purpose"],
+    "trade", "#e0af68",
+    "common", "#6ea8fe",
+    "owner", "#bb9af7",
+    "#9aa6b2",
+  ];
+  const routeWidth: maplibregl.ExpressionSpecification = [
+    "match", ["get", "kind"], "rail", 3.5, "road", 2.5, 1.5,
+  ];
   map.addLayer({
     id: LAYER.routeLine,
     type: "line",
     source: SRC.routes,
+    filter: ["==", ["get", "status"], "intact"],
     layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": routeColor, "line-width": routeWidth, "line-opacity": 1 },
+  });
+  map.addLayer({
+    id: LAYER.routeLineDashed,
+    type: "line",
+    source: SRC.routes,
+    filter: ["!=", ["get", "status"], "intact"],
+    layout: { "line-cap": "butt", "line-join": "round" },
     paint: {
-      "line-color": [
-        "match",
-        ["get", "purpose"],
-        "trade", "#e0af68",
-        "common", "#6ea8fe",
-        "owner", "#bb9af7",
-        "#9aa6b2",
-      ],
-      "line-width": ["match", ["get", "kind"], "rail", 3.5, "road", 2.5, 1.5],
+      "line-color": routeColor,
+      "line-width": routeWidth,
       "line-opacity": ["match", ["get", "status"], "destroyed", 0.35, 1],
-      "line-dasharray": [
-        "match",
-        ["get", "status"],
-        "damaged", ["literal", [2, 1.5]],
-        "destroyed", ["literal", [1, 1.5]],
-        ["literal", [1, 0]],
-      ],
+      "line-dasharray": [2, 1.5],
     },
   });
 
