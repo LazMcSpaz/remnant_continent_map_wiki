@@ -228,7 +228,7 @@ export async function loadFeatures(): Promise<FeatureData> {
 // can't convert GeoJSON to PostGIS directly. Deletes use plain PostgREST.
 // All return/throw; callers reload via loadFeatures() to refresh derived state.
 
-export type EditableLayer = "location" | "route" | "territory";
+export type EditableLayer = "location" | "route" | "territory" | "terrain";
 
 /** True when writes are possible (a backend is configured). */
 export { hasBackend } from "../state/supabase";
@@ -287,6 +287,7 @@ const GEOM_RPC: Record<EditableLayer, string> = {
   location: "update_location_geometry",
   route: "update_route_geometry",
   territory: "update_territory_geometry",
+  terrain: "update_terrain_region_geometry",
 };
 
 export function updateGeometry(
@@ -301,7 +302,37 @@ const TABLE: Record<EditableLayer, string> = {
   location: "locations",
   route: "routes",
   territory: "territories",
+  terrain: "terrain_regions",
 };
+
+/** Physical-input fields editable on a terrain region (scalar — plain UPDATE). */
+export interface TerrainFields {
+  name: string | null;
+  elevation_m: number | null;
+  slope_deg: number | null;
+  aspect_deg: number | null;
+  land_cover: string | null;
+  soil_fertility: number | null;
+  soil_drainage: string | null;
+  surface_water: number | null;
+  wind_exposure: number | null;
+  solar_exposure: number | null;
+}
+
+/**
+ * Update a terrain region's authored physical inputs. These cascade: elevation
+ * feeds the derived temperature field; land cover / soil / water feed crop
+ * suitability. Callers must reload + recompute the climate layer after this.
+ */
+export async function updateTerrainFields(
+  id: string,
+  fields: Partial<TerrainFields>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("terrain_regions").update(fields).eq("id", id);
+  if (error) throw new Error(`update terrain failed: ${error.message}`);
+}
 
 export async function deleteFeature(layer: EditableLayer, id: string): Promise<void> {
   const sb = getSupabase();

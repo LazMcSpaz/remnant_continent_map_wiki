@@ -61,3 +61,23 @@ more pure functions without touching storage.
   functions; nothing here blocks the deferred sim seam.
 - Season is currently a single global `world_settings` row; per-snapshot climate
   (time slider) remains future work and doesn't require schema change.
+
+## Addendum — terrain editor & elevation cascade
+
+Editing terrain (`src/notes/terrain-panel.ts`) is the first editor whose changes
+flow *downstream* into derived data, which surfaced cascade requirements:
+
+- **Inputs that cascade:** elevation → temperature (lapse rate); land cover /
+  soil fertility / surface water → crop suitability; **geometry** too, since a
+  region's centroid sets its effective latitude. All terrain saves therefore
+  route through `applyData` (reload → recompute climate → refresh open panels).
+- **Closed a broken-cascade gap:** a city's climate sampled sea level because
+  locations carry no elevation, so terrain elevation edits wouldn't reach the
+  city on top. Fixed with `sampleElevation()` — point-in-region lookup gives the
+  city the elevation of the terrain beneath it. Verified against PostGIS
+  `ST_Contains`: 4/5 seeded cities resolve to a region; flattening Denvar's
+  region (1600 m → 0) warms its derived temperature by ~10 °C.
+- **No migration:** terrain physical fields are scalar columns, edited via plain
+  PostgREST UPDATE under existing RLS; only geometry uses the RPC.
+- **Single-selection UX:** opening the terrain panel closes the city panel and
+  vice-versa; terrain click ignores clicks that also hit a city marker above it.

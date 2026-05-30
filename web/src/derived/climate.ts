@@ -61,6 +61,50 @@ export function effectiveLatitude(
   return Math.max(0, Math.min(90, deg));
 }
 
+/** Ray-casting point-in-ring test on a single linear ring ([lng,lat] pairs). */
+function pointInRing(pt: [number, number], ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const intersect =
+      yi > pt[1] !== yj > pt[1] &&
+      pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** True when a point falls inside a MultiPolygon (outer ring; ignores holes). */
+function pointInMultiPolygon(pt: [number, number], geom: TerrainRegionGeo["geometry"]): boolean {
+  for (const poly of geom.coordinates) {
+    const outer = poly[0];
+    if (outer && pointInRing(pt, outer)) return true;
+  }
+  return false;
+}
+
+/**
+ * Elevation (m) sampled at a point from the terrain region that contains it,
+ * or 0 (sea level) when no region covers it. This is what makes a city's
+ * derived climate respond to terrain elevation edits beneath it — the cascade
+ * that would otherwise be broken because locations carry no elevation of their
+ * own.
+ */
+export function sampleElevation(
+  point: [number, number],
+  regions: TerrainRegionGeo[],
+): number {
+  for (const r of regions) {
+    if (r.elevation_m != null && pointInMultiPolygon(point, r.geometry)) {
+      return r.elevation_m;
+    }
+  }
+  return 0;
+}
+
 export interface ClimateInputs {
   equatorTempC: number;
   poleTempC: number;

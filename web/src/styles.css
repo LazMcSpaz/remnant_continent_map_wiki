@@ -215,6 +215,93 @@ body {
   font-style: italic;
 }
 
+/* ---- Terrain editor panel ------------------------------------------------- */
+.terra-panel {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  width: min(340px, calc(100% - 1.2rem));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+}
+.terra-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.terra-body {
+  padding: 0.9rem;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+.terra-section {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.terra-derived {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 1rem;
+}
+.terra-derived-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.terra-derived-row .wiki-muted {
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+.terra-derived-note {
+  margin: 0.5rem 0 0;
+}
+.terra-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.terra-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.terra-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.terra-hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.terra-input {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+}
+.terra-actions {
+  margin-top: 0.6rem;
+}
+
 /* ---- Wiki panel (tabbed location details) -------------------------------- */
 .wiki-panel {
   position: absolute;

@@ -65,6 +65,21 @@ drag it and the whole derived field recomputes live (committed to
 same way. A clicked city's **Climate tab** shows its derived temperature and
 growing warmth. See ADR 0004.
 
+## Terrain editor (cascade in action)
+
+Click a **terrain region** (a land-cover area) to open the terrain panel
+(`src/notes/terrain-panel.ts`). It edits the authored physical **inputs** —
+elevation, slope/aspect, land cover, soil fertility/drainage, surface water,
+wind/solar exposure — and shows the **derived** climate they produce
+(temperature, crop suitability + its limiting factor).
+
+Saving cascades: the edit reloads authored data and recomputes the derived
+climate, so the choropleth overlay and any open city Climate tab move with it.
+Because a city has no elevation of its own, its temperature is sampled from the
+terrain region beneath it (`sampleElevation`) — so flattening a region's
+elevation (the cataclysm) warms the cities sitting on it. Scalar inputs save via
+plain PostgREST UPDATE; geometry still goes through the GeoJSON→PostGIS RPC.
+
 Feature layers and derived overlays attach to the `map` instance returned by
 `createBasemap()`. The basemap module knows nothing about them — see
 `docs/architecture.md` for the three-layer model and the seams.

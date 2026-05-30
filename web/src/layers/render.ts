@@ -16,6 +16,7 @@ export const SRC = {
 const LAYER = {
   terrainFill: "rc-terrain-fill",
   terrainLine: "rc-terrain-line",
+  terrainHighlight: "rc-terrain-highlight",
   territoryFill: "rc-territory-fill",
   territoryLine: "rc-territory-line",
   routeLine: "rc-route-line",
@@ -65,6 +66,14 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
     type: "line",
     source: SRC.terrain,
     paint: { "line-color": "#ffffff", "line-width": 0.5, "line-opacity": 0.25 },
+  });
+  // Selected-terrain outline; filtered to the chosen region id.
+  map.addLayer({
+    id: LAYER.terrainHighlight,
+    type: "line",
+    source: SRC.terrain,
+    filter: ["==", ["get", "id"], "__none__"],
+    paint: { "line-color": "#ffd166", "line-width": 2.5, "line-opacity": 0.95 },
   });
 
   // Territories: translucent fill + outline, colored by faction.
@@ -222,4 +231,31 @@ export function setSelectedLocation(map: MlMap, locationId: string | null): void
     ["get", "id"],
     locationId ?? "__none__",
   ]);
+}
+
+/** Register a handler fired with the terrain region id when its fill is clicked. */
+export function onTerrainClick(map: MlMap, handler: (terrainId: string) => void): void {
+  map.on("click", LAYER.terrainFill, (e) => {
+    // A city marker sits above the terrain fill; if the click also hit one, let
+    // the location handler win and ignore it here.
+    if (map.getLayer(LAYER.locationCircle)) {
+      const onCity = map.queryRenderedFeatures(e.point, { layers: [LAYER.locationCircle] });
+      if (onCity.length > 0) return;
+    }
+    const f = e.features?.[0];
+    const id = f?.properties?.id;
+    if (typeof id === "string") handler(id);
+  });
+  map.on("mouseenter", LAYER.terrainFill, () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", LAYER.terrainFill, () => {
+    map.getCanvas().style.cursor = "";
+  });
+}
+
+/** Outline the selected terrain region (or clear with null). */
+export function setSelectedTerrain(map: MlMap, terrainId: string | null): void {
+  if (!map.getLayer(LAYER.terrainHighlight)) return;
+  map.setFilter(LAYER.terrainHighlight, ["==", ["get", "id"], terrainId ?? "__none__"]);
 }

@@ -8,14 +8,15 @@ import "./styles.css";
 import type { Map as MlMap } from "maplibre-gl";
 import { createBasemap } from "./map/basemap";
 import { loadFeatures, hasBackend, type FeatureData } from "./layers/features";
-import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, type NameMode } from "./layers/render";
+import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setSelectedLocation, onTerrainClick, setSelectedTerrain, type NameMode } from "./layers/render";
 import { buildNetworkGraph, edgeTravelHours, type NetworkGraph } from "./derived/network-graph";
 import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { mountClimateControl } from "./derived/climate-control";
-import { climateInputs, temperatureAt, growingWarmth } from "./derived/climate";
+import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
+import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
 import { updateWorldSettings } from "./layers/features";
 
 const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
@@ -81,9 +82,11 @@ async function boot(): Promise<void> {
       getClimate: (detail) => {
         if (!detail.lngLat) return null;
         const inp = climateInputs(data.worldSettings);
-        // Locations lack their own elevation; sample the season+latitude field
-        // at sea level (terrain elevation lives on terrain_regions).
-        const tempC = temperatureAt(detail.lngLat, 0, inp);
+        // Locations carry no elevation of their own; sample it from the terrain
+        // region beneath the city so terrain elevation edits cascade into the
+        // city's derived climate.
+        const elev = sampleElevation(detail.lngLat, data.terrainRegions);
+        const tempC = temperatureAt(detail.lngLat, elev, inp);
         return {
           tempC,
           warmth: growingWarmth(tempC),
@@ -102,6 +105,8 @@ async function boot(): Promise<void> {
     const selectLocation = (id: string): void => {
       const detail = data.locationDetails.get(id);
       if (!detail) return;
+      terrainPanel.close();
+      setSelectedTerrain(map, null);
       setSelectedLocation(map, id);
       if (detail.lngLat) map.easeTo({ center: detail.lngLat, duration: 500 });
       wiki.open(id);
@@ -109,13 +114,34 @@ async function boot(): Promise<void> {
 
     onLocationClick(map, selectLocation);
 
-    /** Apply freshly-loaded data everywhere: render, graph, climate, panel. */
+    // Terrain editor panel. Editing physical inputs cascades into the derived
+    // climate: reloadData → recompute → both panels refresh.
+    const terrainHost: TerrainHost = {
+      getRegion: (id) => data.terrainRegions.find((r) => r.id === id),
+      getDerived: (id) => climate.get(id),
+      reloadData: async () => applyData(await loadFeatures()),
+      canEdit: () => hasBackend(),
+      setStatus,
+    };
+    const terrainPanel = new TerrainPanel(appEl, terrainHost, () => setSelectedTerrain(map, null));
+
+    const selectTerrain = (id: string): void => {
+      if (!data.terrainRegions.some((r) => r.id === id)) return;
+      // Opening terrain closes the city panel (and vice versa) to avoid overlap.
+      wiki.close();
+      setSelectedTerrain(map, id);
+      terrainPanel.open(id);
+    };
+    onTerrainClick(map, selectTerrain);
+
+    /** Apply freshly-loaded data everywhere: render, graph, climate, panels. */
     const applyData = (next: FeatureData): void => {
       data = next;
       graph = rebuildGraph(next);
       updateFeatureData(map, next);
       climate.recompute(next);
       if (wiki.isOpen()) wiki.rerenderActive();
+      if (terrainPanel.isOpen()) terrainPanel.refresh();
       setStatus(summarize(next));
     };
 
