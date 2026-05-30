@@ -6,7 +6,7 @@
 // instance this module returns.
 
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
-import { MIDWEST, readMapConfig, type MapConfig } from "../config";
+import { AOI, readMapConfig, type MapConfig } from "../config";
 
 /** Build a minimal raster style as a dev fallback when no vector style is set. */
 function rasterStyle(cfg: MapConfig): StyleSpecification {
@@ -44,11 +44,11 @@ export function createBasemap(container: HTMLElement): BasemapHandle {
   const map = new maplibregl.Map({
     container,
     style: cfg.styleUrl ?? rasterStyle(cfg),
-    center: MIDWEST.center,
-    zoom: MIDWEST.zoom,
-    minZoom: MIDWEST.minZoom,
-    maxZoom: MIDWEST.maxZoom,
-    maxBounds: MIDWEST.maxBounds,
+    center: AOI.center,
+    zoom: AOI.zoom,
+    minZoom: AOI.minZoom,
+    maxZoom: AOI.maxZoom,
+    maxBounds: AOI.maxBounds,
     attributionControl: false,
     hash: "map", // sync view to URL so a location is shareable
   });

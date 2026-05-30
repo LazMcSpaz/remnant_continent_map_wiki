@@ -7,7 +7,6 @@
 import type { ClimateMetric } from "./climate";
 
 export interface ClimateControlHandlers {
-  onToggle: (visible: boolean) => void;
   onMetric: (metric: ClimateMetric) => void;
   /** Live season scrub (0..1) — recompute only, no DB write yet. */
   onSeasonPreview: (season: number) => void;
@@ -31,26 +30,15 @@ export function mountClimateControl(
 ): void {
   container.replaceChildren();
 
-  // Toggle
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "climate-toggle";
-  toggle.textContent = "Climate: off";
-  toggle.setAttribute("aria-pressed", "false");
-  let on = false;
-  toggle.addEventListener("click", () => {
-    on = !on;
-    toggle.setAttribute("aria-pressed", String(on));
-    toggle.textContent = on ? "Climate: on" : "Climate: off";
-    body.hidden = !on;
-    handlers.onToggle(on);
-  });
-  container.append(toggle);
+  const heading = document.createElement("h2");
+  heading.className = "climate-heading";
+  heading.textContent = "Climate";
+  container.append(heading);
 
-  // Body (metric + season), hidden until toggled on
+  // Metric + season. Visibility of the climate overlay itself is owned by the
+  // Layers panel ("Climate zones"); these controls just shape what it shows.
   const body = document.createElement("div");
   body.className = "climate-body";
-  body.hidden = true;
 
   // Metric switch
   const metricRow = document.createElement("div");

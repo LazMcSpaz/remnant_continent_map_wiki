@@ -12,15 +12,18 @@ export interface MapConfig {
   rasterAttribution: string;
 }
 
-/** Area of interest: the Midwest corridor the fiction maps onto. */
-export const MIDWEST = {
-  /** Roughly centered on the Missouri corridor (Omaha ↔ Kansas City). */
+/** Area of interest: continental North America, opening on the Midwest where
+ *  the current data lives. The fiction maps onto real Midwest geography, but the
+ *  map is pannable across the continent so you can build anywhere. */
+export const AOI = {
+  /** Initial center — the Missouri corridor (Omaha ↔ Kansas City). */
   center: [-95.9, 41.0] as [number, number],
-  zoom: 5,
-  minZoom: 3,
+  /** Open zoomed on the Midwest, not staring at an empty continent. */
+  zoom: 4.2,
+  minZoom: 2.5,
   maxZoom: 16,
-  /** [west, south, east, north] — Denver to the Great Lakes, broadly. */
-  maxBounds: [-110.0, 35.0, -82.0, 49.5] as [number, number, number, number],
+  /** [west, south, east, north] — Alaska/Canada down to Panama, coast to coast. */
+  maxBounds: [-170, 5, -50, 75] as [number, number, number, number],
 };
 
 function str(value: unknown, fallback: string): string {

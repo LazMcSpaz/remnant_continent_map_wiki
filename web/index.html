@@ -22,11 +22,18 @@
         <button id="sign-out" class="name-toggle" type="button" hidden>Sign out</button>
         <span id="status" role="status" aria-live="polite">Loading basemap…</span>
       </header>
-      <div id="map" aria-label="Map of the Remnant Continent (Midwest corridor)"></div>
-      <div id="editor-toolbar" class="editor-toolbar" role="toolbar"
-           aria-label="Feature editing tools" hidden></div>
-      <div id="climate-control" class="climate-control" role="group"
-           aria-label="Derived climate overlay" hidden></div>
+      <div class="map-area">
+        <div id="map" aria-label="Map of the Remnant Continent (North America)"></div>
+        <!-- Top-left stacked controls; anchored within the map area, below the header. -->
+        <div class="map-controls-tl">
+          <div id="editor-toolbar" class="editor-toolbar" role="toolbar"
+               aria-label="Feature editing tools" hidden></div>
+          <div id="layers-panel" class="layers-panel" role="group"
+               aria-label="Map layers" hidden></div>
+        </div>
+        <div id="climate-control" class="climate-control" role="group"
+             aria-label="Derived climate overlay" hidden></div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
