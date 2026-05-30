@@ -2,6 +2,10 @@
 
 Vite + TypeScript + MapLibre GL JS. Phase 1: the **map spine**.
 
+Deploys to Cloudflare Pages as a static build — see `docs/deploy.md`
+(root `web`, build `npm run build`, output `web/dist`). Security headers/CSP
+ship in `public/_headers`.
+
 ## Setup
 
 ```bash
