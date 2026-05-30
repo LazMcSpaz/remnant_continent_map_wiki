@@ -272,32 +272,27 @@ async function init(): Promise<void> {
   }
 
   const appEl = document.getElementById("app") ?? document.body;
-  const gate = createLoginGate(appEl, () => {
-    /* onSignedIn: the auth-change subscription drives the transition */
-  });
 
-  const apply = (hasSession: boolean) => {
-    if (hasSession) {
-      gate.hide();
-      bootOnce();
-    } else if (!booted) {
-      // Only show the gate before first boot; after sign-out we reload (below).
-      gate.show();
-    }
+  // Reveal the app: hide the gate and boot once. Driven both by a successful
+  // sign-in (the gate's callback) and by the auth-state subscription, so it
+  // never depends on a single signal firing.
+  let gate: ReturnType<typeof createLoginGate> | null = null;
+  const enter = () => {
+    gate?.hide();
+    bootOnce();
   };
+  gate = createLoginGate(appEl, enter);
 
-  // React to future changes (sign-in, token refresh, sign-out).
+  // React to auth changes: sign-in/refresh → enter; sign-out after entering →
+  // reload to a clean, data-free state.
   onAuthChange((session) => {
-    if (!session && booted) {
-      // Signed out after using the app — reload to a clean, data-free state.
-      window.location.reload();
-      return;
-    }
-    apply(session !== null);
+    if (session) enter();
+    else if (booted) window.location.reload();
   });
 
   // Initial check (onAuthChange isn't guaranteed to fire immediately).
-  apply((await getSession()) !== null);
+  if ((await getSession()) !== null) enter();
+  else gate.show();
 }
 
 /** Wire the header sign-out button (visible once signed in). */
