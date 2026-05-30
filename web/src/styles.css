@@ -1,0 +1,708 @@
+/* Phase 1 shell styles. The map fills the viewport; a thin header carries the
+   title and a load-status readout. Intentionally minimal — UI chrome for
+   layers, notes, and the time slider arrives in later phases. */
+
+:root {
+  --bg: #0e1116;
+  --panel: #161b22;
+  --border: #2a313c;
+  --text: #e7ecf3;
+  --text-muted: #9aa6b2;
+  --accent: #6ea8fe;
+  --error: #ff7b72;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.app-header .phase {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+}
+
+.name-toggle {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+.name-toggle:hover {
+  border-color: var(--accent);
+}
+
+.io-toolbar {
+  display: flex;
+  gap: 0.3rem;
+}
+.io-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+.io-btn:hover {
+  border-color: var(--accent);
+}
+
+#status {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+#status[data-kind="error"] {
+  color: var(--error);
+}
+
+#map {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* Floating editor toolbar, overlaid on the map's top-left. */
+.editor-toolbar {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.tool-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+.tool-btn:hover {
+  border-color: var(--border);
+}
+.tool-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: #0e1116;
+}
+
+/* Tone MapLibre's default controls toward the dark shell. */
+.maplibregl-ctrl-attrib {
+  font-size: 0.7rem;
+}
+
+/* ---- Climate control (derived overlay) ----------------------------------- */
+.climate-control {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 1.8rem;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem;
+  backdrop-filter: blur(4px);
+  min-width: 13rem;
+}
+.climate-toggle {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+.climate-toggle[aria-pressed="true"] {
+  background: var(--accent);
+  color: #0e1116;
+  border-color: var(--accent);
+}
+.climate-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.climate-metrics {
+  display: flex;
+  gap: 0.3rem;
+}
+.climate-metric {
+  flex: 1;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+}
+.climate-metric[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.climate-season {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.climate-season-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.climate-season input[type="range"] {
+  width: 100%;
+}
+.climate-note {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ---- Login gate (private atlas) ------------------------------------------ */
+.login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+}
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(320px, calc(100% - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.login-title {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.login-sub {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.login-input {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.55rem 0.65rem;
+}
+.login-btn {
+  font: inherit;
+  font-weight: 600;
+  color: #0e1116;
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
+  padding: 0.55rem;
+  cursor: pointer;
+  margin-top: 0.2rem;
+}
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.login-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--error);
+}
+
+/* ---- Terrain editor panel ------------------------------------------------- */
+.terra-panel {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  width: min(340px, calc(100% - 1.2rem));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+}
+.terra-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.terra-body {
+  padding: 0.9rem;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+.terra-section {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.terra-derived {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 1rem;
+}
+.terra-derived-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.terra-derived-row .wiki-muted {
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+.terra-derived-note {
+  margin: 0.5rem 0 0;
+}
+.terra-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.terra-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.terra-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.terra-hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.terra-input {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+}
+.terra-actions {
+  margin-top: 0.6rem;
+}
+
+/* ---- Wiki panel (tabbed location details) -------------------------------- */
+.wiki-panel {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  width: min(360px, calc(100% - 1.2rem));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+}
+
+.wiki-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.9rem 0.5rem;
+}
+.wiki-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.wiki-close {
+  font: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+.wiki-close:hover {
+  color: var(--text);
+}
+
+.wiki-tabs {
+  display: flex;
+  gap: 0.15rem;
+  padding: 0 0.6rem;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.wiki-tab {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.4rem 0.55rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wiki-tab:hover {
+  color: var(--text);
+}
+.wiki-tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.wiki-body {
+  padding: 0.9rem;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+.wiki-muted {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.wiki-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+}
+.wiki-dl dt {
+  color: var(--text-muted);
+}
+.wiki-dl dd {
+  margin: 0;
+}
+
+.wiki-faction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+}
+.wiki-swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.wiki-bignum {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0.2rem 0 0;
+}
+
+.wiki-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+.wiki-bar-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr 2rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+.wiki-bar-label {
+  font-size: 0.8rem;
+}
+.wiki-bar {
+  position: relative;
+  height: 0.55rem;
+  background: var(--bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.wiki-bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+/* Pinned (authored override) reads differently from a geographic baseline. */
+.wiki-bar-fill.wiki-bar-pinned {
+  background: #ffd166;
+}
+/* Tick marking where the geographic baseline sits under a pin. */
+.wiki-bar-tick {
+  position: absolute;
+  top: -1px;
+  width: 2px;
+  height: calc(100% + 2px);
+  background: var(--text);
+  opacity: 0.7;
+}
+.wiki-bar-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.wiki-conn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.wiki-conn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.wiki-conn-to {
+  font-weight: 600;
+}
+.wiki-tag {
+  font-size: 0.68rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.wiki-ok {
+  color: #7ee787;
+  border-color: #2ea04366;
+}
+.wiki-warn {
+  color: #e0af68;
+  border-color: #e0af6866;
+}
+.wiki-bad {
+  color: var(--error);
+  border-color: #ff7b7266;
+}
+
+.wiki-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+.wiki-note {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+}
+.wiki-note-body {
+  white-space: pre-wrap;
+}
+.wiki-note-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.wiki-note-del {
+  margin-left: auto;
+  font: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.wiki-note-del:hover {
+  color: var(--error);
+}
+
+.wiki-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.wiki-note-input {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  resize: vertical;
+}
+.wiki-btn {
+  align-self: flex-end;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #0e1116;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.wiki-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.wiki-btn-ghost {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.wiki-btn-ghost:hover {
+  color: var(--text);
+}
+
+/* Edit affordances */
+.wiki-edit-btn {
+  margin-top: 0.9rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+}
+.wiki-edit-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.wiki-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+}
+.wiki-field-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.wiki-field-input,
+.wiki-note-tags {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+}
+.wiki-form-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+/* Clickable connection rows */
+.wiki-conn-link {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.2rem 0.3rem;
+  margin: 0 -0.3rem;
+}
+.wiki-conn-link:hover,
+.wiki-conn-link:focus-visible {
+  background: var(--bg);
+  outline: none;
+}
+.wiki-conn-link .wiki-conn-to {
+  color: var(--accent);
+}
+
+/* Inline note markup */
+.wiki-note-body code {
+  background: var(--bg);
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+.wiki-note-body a {
+  color: var(--accent);
+}
+.wiki-link {
+  color: var(--accent);
+  border-bottom: 1px dotted var(--accent);
+}
