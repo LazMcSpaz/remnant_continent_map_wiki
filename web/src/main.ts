@@ -12,6 +12,7 @@ import { addFeatureLayers, updateFeatureData, setNameMode, onLocationClick, setS
 import { buildNetworkGraph, edgeTravelHours, type NetworkGraph } from "./derived/network-graph";
 import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
+import { mountIOToolbar } from "./state/io";
 
 function setStatus(text: string, kind: "info" | "error" = "info"): void {
   const el = document.getElementById("status");
@@ -87,19 +88,21 @@ async function boot(): Promise<void> {
 
     onLocationClick(map, selectLocation);
 
+    /** Apply freshly-loaded data everywhere: render, graph, panel, status. */
+    const applyData = (next: FeatureData): void => {
+      data = next;
+      graph = rebuildGraph(next);
+      updateFeatureData(map, next);
+      if (wiki.isOpen()) wiki.rerenderActive();
+      setStatus(summarize(next));
+    };
+
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");
     } else {
       setStatus(summarize(data));
-      mountEditor(
-        map,
-        () => data,
-        (next) => {
-          data = next;
-          graph = rebuildGraph(next);
-          if (wiki.isOpen()) wiki.rerenderActive();
-        },
-      );
+      mountEditor(map, () => data, applyData);
+      mountIO(async () => applyData(await loadFeatures()));
     }
 
     (window as unknown as { __map?: unknown }).__map = map;
@@ -110,8 +113,8 @@ async function boot(): Promise<void> {
   }
 }
 
-/** Mount the editing toolbar; reloads + re-renders + rebuilds graph on change. */
-function mountEditor(map: MlMap, getData: () => FeatureData, setData: (d: FeatureData) => void): void {
+/** Mount the editing toolbar; applyData re-renders, rebuilds the graph, etc. */
+function mountEditor(map: MlMap, getData: () => FeatureData, applyData: (d: FeatureData) => void): void {
   const toolbar = document.getElementById("editor-toolbar");
   if (!toolbar) return;
   mountEditorToolbar(map, toolbar, {
@@ -120,12 +123,18 @@ function mountEditor(map: MlMap, getData: () => FeatureData, setData: (d: Featur
       const first = getData().factions.keys().next();
       return first.done ? null : first.value;
     },
-    onChange: async () => {
-      const next = await loadFeatures();
-      setData(next); // also rebuilds the derived graph
-      updateFeatureData(map, next);
-      setStatus(summarize(next));
-    },
+    onChange: async () => applyData(await loadFeatures()),
+  });
+}
+
+/** Mount the save / export / import toolbar. */
+function mountIO(onImported: () => Promise<void>): void {
+  const toolbar = document.getElementById("io-toolbar");
+  if (!toolbar) return;
+  mountIOToolbar(toolbar, {
+    setStatus,
+    onImported,
+    confirm: (message) => window.confirm(message),
   });
 }
 

@@ -70,6 +70,24 @@ body {
   border-color: var(--accent);
 }
 
+.io-toolbar {
+  display: flex;
+  gap: 0.3rem;
+}
+.io-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+.io-btn:hover {
+  border-color: var(--accent);
+}
+
 #status {
   margin-left: auto;
   font-size: 0.8rem;

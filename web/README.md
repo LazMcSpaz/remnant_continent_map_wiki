@@ -78,3 +78,21 @@ derived graph, and re-renders in place. `src/notes/wiki-panel.ts` is pure DOM
 and talks to a `WikiHost` (implemented in `main.ts`) so it never owns map or
 data state — `LocationDetail` (authored), `NetworkGraph` (derived), and notes
 stay distinct, consistent with the three-layer model.
+
+## Save / load · import / export
+
+Header buttons (when a backend is configured):
+
+- **Save** — download the whole authored layer as a `.json` snapshot: a GeoJSON
+  FeatureCollection (each feature tagged with `rcLayer`) plus a state blob for
+  factions, travel modes, world settings, and notes.
+- **Export GeoJSON** — download just the spatial features as a plain `.geojson`
+  for other GIS tools.
+- **Import** — load a snapshot file; features are **appended** to the current
+  map (not replaced). IDs are regenerated and references (faction ownership,
+  note targets) remapped, so two snapshots can be merged. Per-feature failures
+  are collected and reported rather than aborting the import.
+
+Only the authored layer is serialized — derived values (the network graph,
+travel times) recompute on load, and simulated state (Phase 4) is out of scope.
+See `src/state/snapshot.ts` (data) and `src/state/io.ts` (files + UI).
