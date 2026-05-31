@@ -1,11 +1,23 @@
-# `sim/` — Phase 4 stub interface (deferred, do not build yet)
+# `sim/` — Phase 4 flow simulation
 
-This directory exists from day one **on purpose**. The README makes it a hard
-design constraint that the emergent simulation can be added later without
-reworking Phases 1–3. Keeping a documented, stubbed interface here is what makes
-that seam visible and keeps later work additive.
+This directory existed as a documented stub from day one **on purpose**, so the
+emergent simulation could be added without reworking Phases 1–3. It is now
+**implemented**, and — per the seam — nothing in `map/`, `layers/`, `derived/`,
+`brush/`, `notes/`, or `state/` had to change structurally to add it; the sim
+reads the two contract inputs below and paints through its own overlay. (The
+wiki panel gained one optional, additive `getPressure` host method to show a
+city's pressure; it returns null when the sim is off.)
 
-**Status:** Not implemented. This file is a contract, not code.
+**Status:** Implemented. Files:
+
+- `types.ts` — the contract shapes (`SimState`, `CityBaselines`, `Flow`).
+- `baselines.ts` — derives each city's production/consumption from its
+  population + derived resource potentials (never stored).
+- `engine.ts` — the pure `step(prev, graph, baselines)` and `run(...)`.
+- `sim-controller.ts` — holds state, (re)builds baselines, drives the overlay,
+  serves the control host.
+- `sim-overlay.ts` — pressure halos + flow lines (its own sources/layers).
+- `sim-control.ts` — the turn slider / play / step / reset panel.
 
 ## What the simulation will be
 

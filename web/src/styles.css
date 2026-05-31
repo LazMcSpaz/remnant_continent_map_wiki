@@ -232,6 +232,53 @@ body {
   backdrop-filter: blur(4px);
   min-width: 13rem;
 }
+/* Sim panel: same chrome as climate, stacked to its right. */
+.sim-control {
+  position: absolute;
+  left: 14.6rem;
+  bottom: 1.8rem;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem;
+  backdrop-filter: blur(4px);
+  min-width: 13rem;
+}
+.sim-controls {
+  display: flex;
+  gap: 0.3rem;
+}
+.sim-controls .climate-metric {
+  flex: 1;
+}
+.sim-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.sim-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.sim-stat-val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.wiki-conn-pressure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
 .climate-toggle {
   font: inherit;
   font-size: 0.78rem;
