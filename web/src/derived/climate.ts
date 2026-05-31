@@ -369,6 +369,9 @@ export function cropSuitability(
 
 export type ClimateMetric = "temperature" | "crops";
 
+/** Metric shown by the full-map climate grid overlay. */
+export type GridMetric = "temperature" | "precip" | "biome";
+
 /** A derived value per terrain region, ready to drive a choropleth overlay. */
 export interface RegionDerived {
   id: string;

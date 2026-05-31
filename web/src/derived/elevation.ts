@@ -56,11 +56,16 @@ function loadTile(z: number, x: number, y: number): Promise<ImageData | null> {
   return p;
 }
 
-/** Elevation in metres at a point, or null if the DEM tile is unavailable. */
-export async function sampleElevation(lng: number, lat: number): Promise<number | null> {
+/**
+ * Elevation in metres at a point, or null if the DEM tile is unavailable.
+ * `z` overrides the tile zoom — the full-map grid overlay samples at a coarser
+ * zoom when zoomed out so a continental view touches a handful of tiles, not
+ * hundreds. Defaults to ZOOM for point lookups (a city's climate).
+ */
+export async function sampleElevation(lng: number, lat: number, z: number = ZOOM): Promise<number | null> {
   if (lat > 85 || lat < -85) return 0;
-  const { xf, yf, x, y } = lngLatToTile(lng, lat, ZOOM);
-  const data = await loadTile(ZOOM, x, y);
+  const { xf, yf, x, y } = lngLatToTile(lng, lat, z);
+  const data = await loadTile(z, x, y);
   if (!data) return null;
   const px = Math.min(TILE - 1, Math.max(0, Math.floor((xf - x) * TILE)));
   const py = Math.min(TILE - 1, Math.max(0, Math.floor((yf - y) * TILE)));

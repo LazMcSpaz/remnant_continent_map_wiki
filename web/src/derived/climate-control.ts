@@ -4,10 +4,10 @@
 // recompute — the README's "move an input, watch the derived layer recompute"
 // made tangible.
 
-import type { ClimateMetric } from "./climate";
+import type { GridMetric } from "./climate";
 
 export interface ClimateControlHandlers {
-  onMetric: (metric: ClimateMetric) => void;
+  onMetric: (metric: GridMetric) => void;
   /** Live season scrub (0..1) — recompute only, no DB write yet. */
   onSeasonPreview: (season: number) => void;
   /** Commit the season to world_settings (on release). */
@@ -43,12 +43,13 @@ export function mountClimateControl(
   // Metric switch
   const metricRow = document.createElement("div");
   metricRow.className = "climate-metrics";
-  const metrics: Array<[ClimateMetric, string]> = [
+  const metrics: Array<[GridMetric, string]> = [
     ["temperature", "Temp"],
-    ["crops", "Crops"],
+    ["precip", "Rain"],
+    ["biome", "Biome"],
   ];
-  let activeMetric: ClimateMetric = "temperature";
-  const metricBtns = new Map<ClimateMetric, HTMLButtonElement>();
+  let activeMetric: GridMetric = "temperature";
+  const metricBtns = new Map<GridMetric, HTMLButtonElement>();
   for (const [metric, label] of metrics) {
     const b = document.createElement("button");
     b.type = "button";

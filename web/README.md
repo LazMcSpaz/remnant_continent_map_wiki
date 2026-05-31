@@ -125,7 +125,18 @@ The polar shift to Peru flips the familiar gradient: the old Arctic is the new
 tropics (hot, flooded), the Gulf/South is the new cold side, and the Midwest
 sits temperate in between. A clicked city's **Climate tab** shows biome,
 temperature, precipitation, growing warmth, effective latitude, sampled
-elevation, and prevailing wind. The full-map climate overlay is the next chunk.
+elevation, and prevailing wind.
+
+The **full-map overlay** makes the field visible across the whole map. The
+**Climate zones** layer (Layers panel) paints a rules-based **sampled grid** —
+at each cell we sample the real DEM and run the rules — switchable in the
+**Climate** control between **Temp / Rain / Biome**. A separate, independently
+toggleable **Sea level (flooded)** layer shades every cell that sits below the
+post-shift sea level, so the new coastline reads at a glance instead of being
+inferred city by city. Both come from one sampling pass that resamples on
+pan/zoom (debounced) and samples the DEM at a coarser zoom when zoomed out, so a
+continental view touches a handful of tiles, not hundreds — and nothing is
+sampled until you turn a layer on.
 
 ## Terrain editor (cascade in action)
 
