@@ -56,24 +56,78 @@ function loadTile(z: number, x: number, y: number): Promise<ImageData | null> {
   return p;
 }
 
+/** Decode the elevation (m) of one pixel of a loaded tile. */
+function decodePixel(data: ImageData, xf: number, yf: number, x: number, y: number): number {
+  const px = Math.min(TILE - 1, Math.max(0, Math.floor((xf - x) * TILE)));
+  const py = Math.min(TILE - 1, Math.max(0, Math.floor((yf - y) * TILE)));
+  const i = (py * TILE + px) * 4;
+  return data.data[i] * 256 + data.data[i + 1] + data.data[i + 2] / 256 - 32768;
+}
+
 /**
  * Elevation in metres at a point, or null if the DEM tile is unavailable.
- * `z` overrides the tile zoom — the full-map grid overlay samples at a coarser
- * zoom when zoomed out so a continental view touches a handful of tiles, not
- * hundreds. Defaults to ZOOM for point lookups (a city's climate).
+ * `z` overrides the tile zoom. Defaults to ZOOM for point lookups.
  */
 export async function sampleElevation(lng: number, lat: number, z: number = ZOOM): Promise<number | null> {
   if (lat > 85 || lat < -85) return 0;
   const { xf, yf, x, y } = lngLatToTile(lng, lat, z);
   const data = await loadTile(z, x, y);
   if (!data) return null;
-  const px = Math.min(TILE - 1, Math.max(0, Math.floor((xf - x) * TILE)));
-  const py = Math.min(TILE - 1, Math.max(0, Math.floor((yf - y) * TILE)));
-  const i = (py * TILE + px) * 4;
-  const r = data.data[i];
-  const g = data.data[i + 1];
-  const b = data.data[i + 2];
-  return r * 256 + g + b / 256 - 32768;
+  return decodePixel(data, xf, yf, x, y);
+}
+
+/**
+ * A block of DEM tiles covering a bbox, preloaded so a region can be sampled
+ * **synchronously** (no per-pixel awaits). The static climate overlay loads one
+ * block once, then rasterizes the whole field from it. `z` is chosen as high as
+ * possible while keeping the tile count under `maxTiles`.
+ */
+export interface DemBlock {
+  z: number;
+  tiles: Map<string, ImageData | null>;
+}
+
+/** Load every DEM tile covering [west,south,east,north] at a bounded zoom. */
+export async function loadDemBlock(
+  west: number,
+  south: number,
+  east: number,
+  north: number,
+  maxZoom = 6,
+  maxTiles = 240,
+): Promise<DemBlock> {
+  let z = maxZoom;
+  for (; z > 3; z--) {
+    const a = lngLatToTile(west, north, z);
+    const b = lngLatToTile(east, south, z);
+    const nx = Math.abs(b.x - a.x) + 1;
+    const ny = Math.abs(b.y - a.y) + 1;
+    if (nx * ny <= maxTiles) break;
+  }
+  const a = lngLatToTile(west, north, z);
+  const b = lngLatToTile(east, south, z);
+  const x0 = Math.min(a.x, b.x);
+  const x1 = Math.max(a.x, b.x);
+  const y0 = Math.min(a.y, b.y);
+  const y1 = Math.max(a.y, b.y);
+  const tiles = new Map<string, ImageData | null>();
+  const jobs: Promise<void>[] = [];
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      jobs.push(loadTile(z, x, y).then((d) => void tiles.set(`${x}/${y}`, d)));
+    }
+  }
+  await Promise.all(jobs);
+  return { z, tiles };
+}
+
+/** Synchronous elevation (m) from a preloaded block, or null if missing. */
+export function elevationFromBlock(block: DemBlock, lng: number, lat: number): number | null {
+  if (lat > 85 || lat < -85) return 0;
+  const { xf, yf, x, y } = lngLatToTile(lng, lat, block.z);
+  const t = block.tiles.get(`${x}/${y}`);
+  if (!t) return null;
+  return decodePixel(t, xf, yf, x, y);
 }
 
 /** Sample elevation, treating "no data" as sea level (0). Convenience wrapper. */
