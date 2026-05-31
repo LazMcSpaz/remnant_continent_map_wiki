@@ -27,7 +27,13 @@ type TabId = "overview" | "population" | "resources" | "climate" | "connections"
 export interface LocationClimate {
   tempC: number;
   warmth: number;
-  season: number;
+  precip: number;
+  effLat: number;
+  elevationM: number | null;
+  isWater: boolean;
+  biomeLabel: string;
+  windBand: string;
+  windBearing: number;
   seasonLabel: string;
 }
 
@@ -35,8 +41,8 @@ export interface LocationClimate {
 export interface WikiHost {
   getDetail(id: string): LocationDetail | undefined;
   getGraph(): NetworkGraph;
-  /** Derived climate at a location (recomputed from authored inputs). */
-  getClimate(detail: LocationDetail): LocationClimate | null;
+  /** Derived climate at a location — async (samples the elevation DEM). */
+  getClimate(detail: LocationDetail): Promise<LocationClimate | null>;
   /** Derived resource baselines + pins for a location. */
   getResources(detail: LocationDetail): CityResources | null;
   /** Fly to and select another location, re-opening the panel on it. */
@@ -79,6 +85,11 @@ function titleCase(s: string): string {
 }
 function emptyNote(text: string): HTMLElement {
   return el("p", { className: "wiki-muted" }, [text]);
+}
+function buildDefList(rows: Array<[string, string]>): HTMLElement {
+  const dl = el("dl", { className: "wiki-dl" });
+  for (const [k, v] of rows) dl.append(el("dt", {}, [k]), el("dd", {}, [v]));
+  return dl;
 }
 
 // --- Overview (editable) ----------------------------------------------------
@@ -287,33 +298,37 @@ function renderResources(hostEl: HTMLElement, ctx: RenderCtx): void {
 
 function renderClimate(hostEl: HTMLElement, ctx: RenderCtx): void {
   const { detail, host } = ctx;
-  const c = host.getClimate(detail);
-  if (!c) {
+  hostEl.replaceChildren(emptyNote("Computing climate (sampling elevation)…"));
+  void host.getClimate(detail).then((c) => {
+    if (!c) {
+      hostEl.replaceChildren(emptyNote("No climate — this location has no coordinates."));
+      return;
+    }
+    const bar = (label: string, value: number): HTMLElement => {
+      const fill = el("div", { className: "wiki-bar-fill" });
+      fill.style.width = `${Math.max(0, Math.min(100, value))}%`;
+      return el("div", { className: "wiki-bar-row" }, [
+        el("span", { className: "wiki-bar-label" }, [label]),
+        el("div", { className: "wiki-bar" }, [fill]),
+        el("span", { className: "wiki-bar-val" }, [String(Math.round(value))]),
+      ]);
+    };
+    const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(c.windBearing / 45) % 8];
     hostEl.replaceChildren(
-      emptyNote("No climate available — this location has no coordinates, or world settings are unset."),
+      el("p", { className: "wiki-bignum" }, [`${c.tempC.toFixed(1)} °C`]),
+      el("p", { className: "wiki-muted" }, [`mean temperature · ${c.seasonLabel}`]),
+      buildDefList([
+        ["Biome", c.isWater ? "Submerged (below new sea level)" : c.biomeLabel],
+        ["Effective latitude", `${Math.abs(c.effLat).toFixed(0)}° ${c.effLat >= 0 ? "N" : "S"}`],
+        ["Elevation", c.elevationM == null ? "— (DEM unavailable)" : `${Math.round(c.elevationM)} m`],
+        ["Prevailing wind", `${c.windBand} → ${compass}`],
+      ]),
+      el("div", { className: "wiki-bars" }, [bar("Precipitation", c.precip), bar("Growing", c.warmth)]),
+      el("p", { className: "wiki-muted" }, [
+        "Rule-based from the new pole (Peru): latitude band, real elevation, maritime moderation, orographic rain-shadow, and the post-shift sea level. Scrub the season (bottom-left) to watch it shift.",
+      ]),
     );
-    return;
-  }
-  hostEl.replaceChildren(
-    el("p", { className: "wiki-bignum" }, [`${c.tempC.toFixed(1)} °C`]),
-    el("p", { className: "wiki-muted" }, [`derived mean temperature · ${c.seasonLabel}`]),
-  );
-  const bars = el("div", { className: "wiki-bars" });
-  const warmthFill = el("div", { className: "wiki-bar-fill" });
-  warmthFill.style.width = `${Math.max(0, Math.min(100, c.warmth))}%`;
-  bars.append(
-    el("div", { className: "wiki-bar-row" }, [
-      el("span", { className: "wiki-bar-label" }, ["Growing"]),
-      el("div", { className: "wiki-bar" }, [warmthFill]),
-      el("span", { className: "wiki-bar-val" }, [String(Math.round(c.warmth))]),
-    ]),
-  );
-  hostEl.append(bars);
-  hostEl.append(
-    el("p", { className: "wiki-muted" }, [
-      "Derived from the pole, season, and elevation — recomputes when those inputs change. Scrub the season (bottom-left) to watch it move.",
-    ]),
-  );
+  });
 }
 
 // --- Connections (clickable) ------------------------------------------------

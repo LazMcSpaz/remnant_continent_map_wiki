@@ -22,7 +22,7 @@ export type Uuid = string;
 export type Timestamptz = string;
 export type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
-export type RouteKind = "rail" | "road" | "trail";
+export type RouteKind = "rail" | "road" | "trail" | "landship";
 export type RouteStatus = "intact" | "damaged" | "destroyed";
 export type SurfaceKind = "water" | "forest";
 export type SurfaceOp = "add" | "remove";
@@ -138,6 +138,7 @@ export interface RouteBreakGeo {
   kind: BreakKind;
   label: string | null;
   active: boolean;
+  faction_id: Uuid | null;
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }

@@ -54,15 +54,48 @@ export function createBasemap(container: HTMLElement): BasemapHandle {
   });
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
-  map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
+  map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-left");
   map.addControl(
     new maplibregl.AttributionControl({ compact: true }),
     "bottom-right",
   );
+
+  enableMiddleMousePan(map);
 
   const ready = new Promise<void>((resolve) => {
     map.on("load", () => resolve());
   });
 
   return { map, ready };
+}
+
+/** Pan the map by dragging with the middle mouse button (button 1). */
+function enableMiddleMousePan(map: maplibregl.Map): void {
+  const canvas = map.getCanvas();
+  let panning = false;
+  let lastX = 0;
+  let lastY = 0;
+
+  canvas.addEventListener("mousedown", (e) => {
+    if (e.button !== 1) return;
+    e.preventDefault(); // suppress the browser's middle-click autoscroll
+    panning = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    canvas.style.cursor = "grabbing";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!panning) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    map.panBy([-dx, -dy], { duration: 0 });
+  });
+  window.addEventListener("mouseup", (e) => {
+    if (e.button === 1 && panning) {
+      panning = false;
+      canvas.style.cursor = "";
+    }
+  });
 }

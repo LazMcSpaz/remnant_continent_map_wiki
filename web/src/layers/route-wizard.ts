@@ -82,7 +82,8 @@ export class RouteWizard {
   // --- placement --------------------------------------------------------------
 
   private armPlacement(): void {
-    this.map.getCanvas().style.cursor = "crosshair";
+    // Class (not inline style) so hover handlers can't override the crosshair.
+    this.map.getCanvas().classList.add("rc-crosshair");
     this.map.once("click", (e) => {
       if (!this.active) return;
       const pt = this.snap([e.lngLat.lng, e.lngLat.lat]);
@@ -95,7 +96,7 @@ export class RouteWizard {
       } else if (this.step === "end") {
         this.endPt = pt;
         this.addMarker(pt, "#ff7b72", "End");
-        this.map.getCanvas().style.cursor = "";
+        this.map.getCanvas().classList.remove("rc-crosshair");
         this.step = "mode";
         this.render();
       }
@@ -129,7 +130,7 @@ export class RouteWizard {
       this.geometry = snapped ?? { type: "LineString", coordinates: [this.startPt, this.endPt] };
       if (!snapped) this.host.setStatus("Routing unavailable — used a straight line.", "error");
     } else {
-      this.kind = "trail"; // landship hover path (off-road)
+      this.kind = "landship"; // hover path; locked to the Landship travel mode
       this.geometry = landshipRoute(this.startPt, this.endPt, this.host.barrierRings());
     }
     this.showPreview(this.geometry);
@@ -187,7 +188,7 @@ export class RouteWizard {
     this.markers = [];
     if (this.map.getLayer(PREVIEW_LAYER)) this.map.removeLayer(PREVIEW_LAYER);
     if (this.map.getSource(PREVIEW_SRC)) this.map.removeSource(PREVIEW_SRC);
-    this.map.getCanvas().style.cursor = "";
+    this.map.getCanvas().classList.remove("rc-crosshair");
   }
 
   // --- modal rendering --------------------------------------------------------
@@ -233,8 +234,8 @@ export class RouteWizard {
       c.append(title, body);
     } else if (this.step === "owner") {
       title.textContent = "Who owns this route?";
-      const km = this.geometry ? lengthKm(this.geometry).toFixed(0) : "?";
-      body.append(hint(`Computed path: ~${km} km. Choose an owner (or leave unaligned).`));
+      const miles = this.geometry ? (lengthKm(this.geometry) / 1.609344).toFixed(0) : "?";
+      body.append(hint(`Computed path: ~${miles} mi. Choose an owner (or leave unaligned).`));
       const list = document.createElement("div");
       list.className = "wizard-faction-list";
       list.append(

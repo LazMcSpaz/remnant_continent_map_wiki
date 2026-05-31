@@ -96,14 +96,8 @@ export function addFeatureLayers(map: MlMap, data: FeatureData, nameMode: NameMo
   // Routes. line-dasharray can't be data-driven in MapLibre, so we use two
   // layers with mutually-exclusive status filters: intact = solid, everything
   // else = dashed (and destroyed is also faded via opacity).
-  const routeColor: maplibregl.ExpressionSpecification = [
-    "match",
-    ["get", "purpose"],
-    "trade", "#e0af68",
-    "common", "#6ea8fe",
-    "owner", "#bb9af7",
-    "#9aa6b2",
-  ];
+  // Routes take the color of their owning faction (neutral grey if unaligned).
+  const routeColor: maplibregl.ExpressionSpecification = ["get", "ownerColor"];
   // Width by class: major routes read as trunk lines, secret as faint paths.
   const routeWidth: maplibregl.ExpressionSpecification = [
     "match", ["get", "routeClass"], "major", 4, "minor", 2.5, "secret", 1.5, 2.5,

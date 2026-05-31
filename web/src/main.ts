@@ -26,7 +26,9 @@ import { RouteWizard } from "./layers/route-wizard";
 import type { Position } from "geojson";
 import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
-import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
+import { climateInputs } from "./derived/climate";
+import { sampleClimate } from "./derived/climate-sample";
+import { growingWarmth } from "./derived/climate";
 import { deriveCityResources } from "./derived/resources";
 import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
@@ -93,18 +95,20 @@ async function boot(): Promise<void> {
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
       getGraph: () => graph,
-      getClimate: (detail) => {
+      getClimate: async (detail) => {
         if (!detail.lngLat) return null;
         const inp = climateInputs(data.worldSettings);
-        // Locations carry no elevation of their own; sample it from the terrain
-        // region beneath the city so terrain elevation edits cascade into the
-        // city's derived climate.
-        const elev = sampleElevation(detail.lngLat, data.terrainRegions);
-        const tempC = temperatureAt(detail.lngLat, elev, inp);
+        const c = await sampleClimate(detail.lngLat, inp); // samples the DEM
         return {
-          tempC,
-          warmth: growingWarmth(tempC),
-          season: inp.season,
+          tempC: c.tempC,
+          warmth: growingWarmth(c.meanTempC),
+          precip: c.precip,
+          effLat: c.effLat,
+          elevationM: c.elevationM,
+          isWater: c.isWater,
+          biomeLabel: c.biome.label,
+          windBand: c.windBand,
+          windBearing: c.windBearing,
           seasonLabel: seasonName(inp.season),
         };
       },
@@ -167,6 +171,7 @@ async function boot(): Promise<void> {
     };
     const routeHost: RouteHost = {
       getRoute: findRoute,
+      factions: () => [...data.factions.values()],
       getBreaks: (routeId) => data.routeBreaks.filter((b) => b.route_id === routeId),
       beginPlaceBreak: (routeId, kind) => {
         placingBreak = true;

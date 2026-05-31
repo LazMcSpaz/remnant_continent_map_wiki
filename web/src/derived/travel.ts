@@ -41,11 +41,20 @@ function statusFactor(status: RouteStatus): number {
   return 1;
 }
 
-/** Travel time in hours for a length (km) at the current mode + route status. */
-export function travelHours(lengthKm: number, status: RouteStatus): number {
+/** Travel time in hours for a length (km) at a mode (default current) + status. */
+export function travelHours(lengthKm: number, status: RouteStatus, mode: TravelMode = current): number {
   const miles = lengthKm / KM_PER_MILE;
-  const mph = current.mph * statusFactor(status);
+  const mph = mode.mph * statusFactor(status);
   return mph > 0 ? miles / mph : 0;
+}
+
+export const LANDSHIP_MODE: TravelMode =
+  TRAVEL_MODES.find((m) => m.id === "landship") ?? TRAVEL_MODES[0];
+
+/** Length formatted in imperial miles. */
+export function formatMiles(lengthKm: number): string {
+  const miles = lengthKm / KM_PER_MILE;
+  return `${miles.toFixed(miles < 10 ? 1 : 0)} mi`;
 }
 
 /** Format hours as "3.4 h" or "2 d 4 h" for long hauls. */

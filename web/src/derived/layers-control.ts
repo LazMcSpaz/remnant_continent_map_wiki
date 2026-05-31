@@ -7,7 +7,7 @@ import { setGroupVisible, type LayerGroup } from "../layers/render";
 import type { ClimateOverlay } from "./climate-overlay";
 
 interface Row {
-  id: LayerGroup | "climate";
+  id: LayerGroup | "climate" | "water";
   label: string;
   swatch: string;
   /** Initial checked state. */
@@ -16,6 +16,7 @@ interface Row {
 
 const ROWS: Row[] = [
   { id: "climate", label: "Climate zones", swatch: "#e85d3a", on: false },
+  { id: "water", label: "Sea level (flooded)", swatch: "#1f5d8c", on: false },
   { id: "terrain", label: "Terrain", swatch: "#7d9b4e", on: true },
   { id: "territories", label: "Territories", swatch: "#6ea8fe", on: true },
   { id: "routes", label: "Routes & breaks", swatch: "#e0af68", on: true },
@@ -49,6 +50,7 @@ export function mountLayersPanel(
 
     cb.addEventListener("change", () => {
       if (row.id === "climate") climate.setVisible(cb.checked);
+      else if (row.id === "water") climate.setWaterVisible(cb.checked);
       else setGroupVisible(map, row.id, cb.checked);
     });
 

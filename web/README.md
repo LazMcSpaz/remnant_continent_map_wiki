@@ -76,18 +76,18 @@ pixel-hunting between overlapping features.
   Landship barriers are terrain regions that are forest, high-elevation
   (≥1500 m), or steep (≥15°), so landship routing sharpens as you author more
   terrain. Configure the OSRM server with `VITE_OSRM_URL`.
-- **Click a route** to open its panel: edit class (**major/minor/secret**),
-  status, kind, and purpose; see derived length + **travel time**, which always
-  computes and updates with the chosen **travel mode** (on foot, caravan,
-  mounted, landship, motorized, rail — each with a stylized mph). Read/add/delete
-  notes. Class feeds graph capacity and on-map styling (major thicker, secret
-  fainter). The route click target is widened a few px so thin lines are easy to
-  select.
-- **Breaks** — in a route's panel, choose a kind (**natural / blockade / toll**)
-  and "Place break", then click the spot on the route; the point snaps onto the
-  line. Breaks are **annotations** — markers that record a barrier/toll. They do
-  **not** close the route or stop travel time; lift or delete them as needed.
-  They ride on the Routes layer (no separate toggle).
+- Routes are drawn in the **color of their owning faction** (grey if unaligned).
+- **Click a route** to open its panel: see derived **length (miles)**, **owner**,
+  and **travel time** (always computes) for the chosen **travel mode** — on foot,
+  caravan, mounted, landship, motorized, rail, each with a stylized mph. Edit
+  class, status, kind, **owner faction**, and purpose; or **delete** the route.
+  **Landship** routes are locked to the Landship travel mode. The click target
+  is widened a few px so thin lines are easy to select.
+- **Breaks** — choose a kind (**natural / blockade / toll**) and "Place break",
+  then click the spot on the route; it snaps onto the line. Breaks are
+  **annotations** (they don't close the route or stop travel) and a blockade or
+  toll can be **tagged with the faction** that controls it. Lift or delete them;
+  they ride on the Routes layer.
 - **Corridors (route groups)** — the **Corridors** panel (top-left) lists named
   corridors and has "New corridor": name it, then click route segments to add
   them (Esc to finish). A corridor's panel shows its derived **total length and
@@ -98,16 +98,45 @@ The whole route system — segments, classes, breaks, and corridors — is inclu
 in Save / Export and restored on Import (ids remapped, breaks re-snapped onto
 their routes, corridor membership rebuilt).
 
-## Derived climate cascade (Phase 2)
+## Rule-based climate (Phase 2)
 
-`src/derived/climate.ts` turns the authored inputs into a temperature field,
-growing warmth, and crop suitability — pure functions, never stored. The
-control bottom-left toggles a **choropleth overlay** (temperature blue→red or
-crop suitability brown→green over the terrain regions) and a **season scrubber**:
-drag it and the whole derived field recomputes live (committed to
-`world_settings.season` on release). Moving the pole would remap the field the
-same way. A clicked city's **Climate tab** shows its derived temperature and
-growing warmth. See ADR 0004.
+Climate is **computed by rules**, not authored as polygons. `src/derived/climate.ts`
+takes the new **North Pole** (`world_settings.pole_geom`, set on **Peru**) plus
+real **elevation** sampled from terrain-RGB tiles (`src/derived/elevation.ts`)
+and derives **temperature, precipitation, and prevailing wind** for any point:
+
+- temperature ∝ sin(distance-from-pole) (pole cold, new equator hot), with a
+  hemisphere-aware seasonal swing and an elevation lapse;
+- precipitation from the latitude band (ITCZ wet → subtropics dry → mid-lat wet
+  → poles dry) with an orographic lift;
+- wind band (trade easterlies / westerlies / polar easterlies) oriented to the
+  new axis.
+
+It also models the **inundation**: a rapid shift re-forms the equatorial bulge
+around the new equator, so sea level stands higher there — old-Arctic lowlands
+(Hudson Bay) flood into new warm seas while the new polar regions drain. A point
+is water if its real elevation is below the local post-shift sea level. From
+there it adds **maritime moderation** (coasts milder, interiors extreme),
+**orographic rain-shadow** (windward wet, leeward dry, from upwind elevation),
+and a **biome** classification (ice/tundra/desert/grassland/forest/savanna/
+rainforest/sea).
+
+The polar shift to Peru flips the familiar gradient: the old Arctic is the new
+tropics (hot, flooded), the Gulf/South is the new cold side, and the Midwest
+sits temperate in between. A clicked city's **Climate tab** shows biome,
+temperature, precipitation, growing warmth, effective latitude, sampled
+elevation, and prevailing wind.
+
+The **full-map overlay** makes the field visible across the whole map. The
+**Climate zones** layer (Layers panel) paints a rules-based **sampled grid** —
+at each cell we sample the real DEM and run the rules — switchable in the
+**Climate** control between **Temp / Rain / Biome**. A separate, independently
+toggleable **Sea level (flooded)** layer shades every cell that sits below the
+post-shift sea level, so the new coastline reads at a glance instead of being
+inferred city by city. Both come from one sampling pass that resamples on
+pan/zoom (debounced) and samples the DEM at a coarser zoom when zoomed out, so a
+continental view touches a handful of tiles, not hundreds — and nothing is
+sampled until you turn a layer on.
 
 ## Terrain editor (cascade in action)
 
