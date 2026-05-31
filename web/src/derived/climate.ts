@@ -236,7 +236,7 @@ export function seaLevelAt(point: [number, number], inp: ClimateInputs): number 
  * The water colour matches the sea-level overlay.
  */
 export const BIOME_LEGEND: Biome[] = [
-  { id: "water", label: "Sea / lake", color: "#1f5d8c" },
+  { id: "water", label: "Sea / lake", color: "#abd2df" },
   { id: "ice", label: "Ice / polar desert", color: "#dfe9f0" },
   { id: "tundra", label: "Tundra", color: "#9aa7a0" },
   { id: "desert", label: "Desert", color: "#d8b15f" },
