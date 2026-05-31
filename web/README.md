@@ -194,10 +194,16 @@ faction trade freely, while across faction lines a pairwise stance —
 ally gets the lion's share, a tense partner a trickle, a hostile neighbour
 nothing). A **wealth** metric (derived, never stored) accrues each turn to the
 faction that produces and exports surplus, so you can see who actually benefits.
-**Tech level** (1–10, authored) directly scales production, and an authored
-**influence** score is recorded for later systems. Edit all of this — tech,
-influence, and the relationship matrix — in the **Factions** panel (top-left);
-the **Simulation** control shows the live faction **wealth ranking**.
+
+**Tech level** (1–10) and **influence** are **authored per city** — tech scales
+that city's production; a city's Overview tab also assigns its **faction** (a
+dropdown, with **+ New faction…** which asks major/minor). A faction's figures
+are **derived from its cities**: tech is the **population-weighted average** of
+member cities' tech, influence is the **sum**. The **Factions** panel (top-left)
+shows these read-only alongside each faction's **tier**, lets you set the tier
+and the **relationship matrix**, and hides **minor** factions behind a "Show
+minor" toggle (**major** ones always list). The **Simulation** control shows the
+live faction **wealth ranking**.
 
 The payoff is the cascade made tangible: a **chokepoint** that, when severed,
 strands supply shows up as pressure spikes in the cities behind it (verified on
@@ -229,6 +235,18 @@ chokepoint). The README's expectation holds — a sole river crossing surfaces o
 its own, because severing it disconnects everything beyond it. Verified on a
 two-cluster graph: the lone bridge scores 1.00 on both signals while the
 redundant triangle edges stay low.
+
+### Travel-time isochrones
+
+The **Reachability (isochrones)** control (top-left) routes from a chosen
+**origin city** at a chosen **travel mode**: Dijkstra over the graph with each
+edge costed by its travel hours (so a damaged edge is slower but still passable)
+shades every reachable route + city by **time-to-reach**, in bands from cool/near
+to red/far, with a legend and a nearest-first list of reachable cities and their
+hours. It refreshes when routes change and clears if its origin is removed.
+Verified on a chain with a damaged middle leg — the slowdown propagates exactly
+into the downstream cities' arrival times. This completes the Phase 4 analysis
+items (chokepoints + isochrones); the flow simulation is described above.
 
 ## Terrain editor (cascade in action)
 

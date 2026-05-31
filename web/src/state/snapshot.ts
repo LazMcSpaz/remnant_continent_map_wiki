@@ -63,7 +63,7 @@ export interface Snapshot {
   version: number;
   exportedAt: string;
   features: FeatureCollection<Geometry, Record<string, unknown>>;
-  factions: Array<Pick<Faction, "id" | "name" | "color" | "tech_level" | "influence">>;
+  factions: Array<Pick<Faction, "id" | "name" | "color" | "tier">>;
   /** Pairwise faction stance, by faction id (remapped on import). */
   factionRelations: Array<{ faction_a: string; faction_b: string; level: RelationLevel }>;
   travelModes: Array<Pick<TravelMode, "id" | "label" | "speed_kph">>;
@@ -94,7 +94,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
 
   const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members] =
     await Promise.all([
-      sb.from("factions").select("id,name,color,tech_level,influence"),
+      sb.from("factions").select("id,name,color,tier"),
       sb.from("faction_relations").select("faction_a,faction_b,level"),
       sb.from("travel_modes").select("id,label,speed_kph"),
       sb.from("locations_geojson").select("*"),
@@ -122,6 +122,8 @@ export async function exportSnapshot(): Promise<Snapshot> {
         faction_id: r.faction_id,
         population: r.population,
         resource_overrides: r.resource_overrides,
+        tech_level: r.tech_level,
+        influence: r.influence,
       }),
     );
   }
@@ -252,7 +254,7 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
   for (const f of snap.factions) {
     const { data, error } = await sb
       .from("factions")
-      .insert({ name: f.name, color: f.color, tech_level: f.tech_level ?? 5, influence: f.influence ?? 0 })
+      .insert({ name: f.name, color: f.color, tier: f.tier ?? "major" })
       .select("id")
       .single();
     if (error) result.errors.push(`faction "${f.name}": ${error.message}`);
@@ -296,10 +298,14 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
           ...(factionId ? { factionId } : {}),
         })) as string;
         if (typeof f.id === "string" && typeof newId === "string") locationIdMap.set(f.id, newId);
-        // Population + resource overrides aren't part of create_location.
+        // Population, tech, and influence aren't part of create_location.
         const pop = props.population;
-        if (typeof newId === "string" && typeof pop === "number") {
-          await updateLocationFields(newId, { population: pop });
+        const extra: Partial<{ population: number; tech_level: number; influence: number }> = {};
+        if (typeof pop === "number") extra.population = pop;
+        if (typeof props.tech_level === "number") extra.tech_level = props.tech_level;
+        if (typeof props.influence === "number") extra.influence = props.influence;
+        if (typeof newId === "string" && Object.keys(extra).length > 0) {
+          await updateLocationFields(newId, extra);
         }
         if (typeof newId === "string" && props.resource_overrides && typeof props.resource_overrides === "object") {
           await updateLocationResources(newId, props.resource_overrides as Record<string, number>);

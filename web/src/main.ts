@@ -17,6 +17,9 @@ import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { RiversOverlay } from "./derived/rivers-overlay";
 import { ChokepointOverlay } from "./derived/chokepoint-overlay";
+import { IsochroneOverlay } from "./derived/isochrone-overlay";
+import { mountIsochroneControl, type IsochroneHost } from "./notes/isochrone-control";
+import { TRAVEL_MODES } from "./derived/travel";
 import { SimController } from "./sim/sim-controller";
 import { mountSimControl } from "./sim/sim-control";
 import { mountClimateControl } from "./derived/climate-control";
@@ -26,8 +29,9 @@ import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-pane
 import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
 import { mountFactionsControl, type FactionsHost } from "./notes/factions-control";
-import { updateFaction, setFactionRelation } from "./layers/features";
+import { updateFaction, setFactionRelation, createFaction, setLocationFaction } from "./layers/features";
 import { buildRelationFn } from "./sim/relations";
+import { deriveFactionStats } from "./derived/faction-stats";
 import { createRouteGroup, addRouteGroupMember, createRoute } from "./layers/features";
 import { RouteWizard } from "./layers/route-wizard";
 import type { Position } from "geojson";
@@ -106,6 +110,8 @@ async function boot(): Promise<void> {
     // Phase 4 analysis — chokepoint / centrality detection over the graph.
     const chokepoints = new ChokepointOverlay(map, setStatus);
     chokepoints.recompute(graph, data.routes);
+    // Phase 4 analysis — travel-time isochrones from a chosen origin + mode.
+    const isochrones = new IsochroneOverlay(map);
 
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
@@ -138,6 +144,9 @@ async function boot(): Promise<void> {
         const p = sim.pressureFor(detail.id);
         return p == null ? null : { pressure: p, turn: sim.maxTurn() };
       },
+      listFactions: () => [...data.factions.values()].map((f) => ({ id: f.id, name: f.name })),
+      setLocationFaction: (locationId, factionId) => setLocationFaction(locationId, factionId),
+      createFaction: (name, tier) => createFaction(name, tier),
       canEdit: () => hasBackend(),
       setStatus,
       navigateTo: (id) => selectLocation(id),
@@ -298,18 +307,29 @@ async function boot(): Promise<void> {
 
     // Factions panel: economy attributes (tech, influence) + relationship matrix.
     const factionsHost: FactionsHost = {
-      listFactions: () => [...data.factions.values()],
+      listFactions: () => {
+        const stats = deriveFactionStats(data.locationDetails.values());
+        return [...data.factions.values()].map((f) => {
+          const s = stats.get(f.id);
+          return {
+            faction: f,
+            techLevel: s?.techLevel ?? null,
+            influence: s?.influence ?? 0,
+            cityCount: s?.cityCount ?? 0,
+            wealth: sim.isVisible() ? sim.wealthFor(f.id) : null,
+          };
+        });
+      },
       relation: (a, b) => {
         const lv = buildRelationFn(data.factionRelations)(a, b);
         return lv === "self" ? "friendly" : lv; // db stance has no "self"
       },
-      wealth: (id) => (sim.isVisible() ? sim.wealthFor(id) : null),
-      setTechLevel: async (id, tech) => {
-        await updateFaction(id, { tech_level: tech });
+      setTier: async (id, tier) => {
+        await updateFaction(id, { tier });
         applyData(await loadFeatures());
       },
-      setInfluence: async (id, influence) => {
-        await updateFaction(id, { influence });
+      setColor: async (id, color) => {
+        await updateFaction(id, { color });
         applyData(await loadFeatures());
       },
       setRelation: async (a, b, level) => {
@@ -321,6 +341,29 @@ async function boot(): Promise<void> {
     const factionsControl = mountFactionsControl(
       document.getElementById("factions-panel") ?? document.createElement("div"),
       factionsHost,
+    );
+
+    // Reachability isochrones: route from a chosen origin city at a travel mode.
+    const isochroneHost: IsochroneHost = {
+      originCities: () =>
+        [...data.locationDetails.values()]
+          .filter((d) => d.lngLat != null)
+          .map((d) => ({ id: d.id, name: d.name }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      run: (originLocationId, modeId) => {
+        const mode = TRAVEL_MODES.find((m) => m.id === modeId) ?? TRAVEL_MODES[0];
+        const iso = isochrones.show(graph, data.routes, `loc:${originLocationId}`, mode);
+        return iso.cities.map((c) => ({
+          locationId: c.locationId as string,
+          name: c.name,
+          hours: c.hours,
+        }));
+      },
+      clear: () => isochrones.clear(),
+    };
+    mountIsochroneControl(
+      document.getElementById("isochrone-panel") ?? document.createElement("div"),
+      isochroneHost,
     );
 
     // Esc ends corridor add-members mode.
@@ -394,6 +437,15 @@ async function boot(): Promise<void> {
       climate.recompute(next);
       rivers.recompute(next);
       chokepoints.recompute(graph, next.routes);
+      // Refresh an active isochrone overlay against the rebuilt graph, unless its
+      // origin city no longer exists.
+      if (isochrones.isActive()) {
+        const origin = isochrones.getIsochrones()?.originNodeId;
+        const mode = isochrones.getIsochrones()?.mode;
+        const stillThere = origin && graph.nodes.some((n) => n.id === origin);
+        if (origin && mode && stillThere) isochrones.show(graph, next.routes, origin, mode);
+        else isochrones.clear();
+      }
       if (wiki.isOpen()) wiki.rerenderActive();
       if (terrainPanel.isOpen()) terrainPanel.refresh();
       if (routePanel.isOpen()) routePanel.refresh();

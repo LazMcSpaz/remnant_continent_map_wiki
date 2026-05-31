@@ -19,6 +19,7 @@ import { getSupabase } from "../state/supabase";
 import type {
   Faction,
   FactionRelation,
+  FactionTier,
   RelationLevel,
   LocationGeo,
   RouteGeo,
@@ -85,6 +86,10 @@ export interface LocationDetail {
   factionColor: string;
   population: number | null;
   resources: Record<string, number>;
+  /** Authored 1..10 tech level for this city (scales production). */
+  techLevel: number;
+  /** Authored influence for this city (summed into the faction's). */
+  influence: number;
   lngLat: [number, number] | null;
 }
 
@@ -199,6 +204,8 @@ export async function loadFeatures(): Promise<FeatureData> {
         factionColor: colorOf(r.faction_id),
         population: r.population,
         resources: coerceResources(r.resource_overrides),
+        techLevel: r.tech_level ?? 5,
+        influence: r.influence ?? 0,
         lngLat: r.geometry.type === "Point"
           ? [r.geometry.coordinates[0], r.geometry.coordinates[1]]
           : null,
@@ -553,7 +560,15 @@ export async function deleteNote(id: string): Promise<void> {
 /** Update scalar location fields (population, names, type) via PostgREST. */
 export async function updateLocationFields(
   id: string,
-  fields: Partial<{ name: string; old_world_name: string | null; type: string; population: number | null }>,
+  fields: Partial<{
+    name: string;
+    old_world_name: string | null;
+    type: string;
+    population: number | null;
+    faction_id: string | null;
+    tech_level: number;
+    influence: number;
+  }>,
 ): Promise<void> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — editing is unavailable.");
@@ -561,15 +576,48 @@ export async function updateLocationFields(
   if (error) throw new Error(`update location failed: ${error.message}`);
 }
 
-/** Update authored faction economy attributes (tech level, influence). */
+/** Update authored faction fields (name, color, tier). Tech/influence are
+ *  derived from the faction's cities, not stored here. */
 export async function updateFaction(
   id: string,
-  fields: Partial<{ name: string; color: string; tech_level: number; influence: number }>,
+  fields: Partial<{ name: string; color: string; tier: FactionTier }>,
 ): Promise<void> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — editing is unavailable.");
   const { error } = await sb.from("factions").update(fields).eq("id", id);
   if (error) throw new Error(`update faction failed: ${error.message}`);
+}
+
+/** Create a faction (major or minor) and return its new id. Picks a random
+ *  pleasant color when none is given. */
+export async function createFaction(
+  name: string,
+  tier: FactionTier,
+  color?: string,
+): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const c = color ?? randomFactionColor();
+  const { data, error } = await sb
+    .from("factions")
+    .insert({ name, tier, color: c })
+    .select("id")
+    .single();
+  if (error) throw new Error(`create faction failed: ${error.message}`);
+  return (data as { id: string }).id;
+}
+
+/** Assign (or clear) the faction that a city belongs to. */
+export async function setLocationFaction(locationId: string, factionId: string | null): Promise<void> {
+  return updateLocationFields(locationId, { faction_id: factionId });
+}
+
+const FACTION_PALETTE = [
+  "#6ea8fe", "#e0af68", "#7dcd85", "#e06a8a", "#b48ce0",
+  "#5fc4c4", "#e08a4a", "#9bab57", "#d28ac4", "#7d9b4e",
+];
+function randomFactionColor(): string {
+  return FACTION_PALETTE[Math.floor(Math.random() * FACTION_PALETTE.length)];
 }
 
 /**
