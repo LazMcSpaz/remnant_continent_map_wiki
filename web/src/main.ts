@@ -112,11 +112,11 @@ async function boot(): Promise<void> {
           seasonLabel: seasonName(inp.season),
         };
       },
-      getResources: (detail) => {
+      getResources: async (detail) => {
         if (!detail.lngLat) return null;
         const inp = climateInputs(data.worldSettings);
         const overrides = (detail.resources ?? {}) as Record<string, number>;
-        return deriveCityResources(detail.lngLat, overrides, data.terrainRegions, inp);
+        return deriveCityResources(detail.lngLat, overrides, inp);
       },
       canEdit: () => hasBackend(),
       setStatus,

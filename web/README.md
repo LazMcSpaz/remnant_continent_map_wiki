@@ -197,11 +197,15 @@ gets a selection halo. Tabs (arrow keys navigate the tablist; Esc closes):
 
 - **Overview** — type, new/old-world names, faction, coordinates. *Editable.*
 - **Population** — authored population stat. *Editable.*
-- **Resources** — **derived from geography** (food from crop suitability, water
-  from surface water, energy from wind+solar, production from buildable land),
-  with `resource_overrides` shown as **pins** (📌) that override the baseline and
-  survive recompute. A baseline tick marks where geography sits under a pin.
-  Edit to pin/unpin; blank = use the baseline. *Recomputes with terrain/season.*
+- **Resources** — **derived from the climate model**, no authored terrain
+  required: each city is sampled (DEM elevation + the climate rules + resulting
+  biome) and the four resources fall out of it — **food** from crop suitability
+  (growing-season warmth × rainfall/irrigation moisture × biome soil & cover),
+  **water** from rainfall + water proximity, **energy** from insolation (by
+  latitude) + wind (by band/coast/elevation), **production** from buildable
+  cover × elevation. `resource_overrides` show as **pins** (📌) that override the
+  baseline and survive recompute; a tick marks where the model sits under a pin.
+  Edit to pin/unpin; blank = use the baseline. *Recomputes when the pole moves.*
 - **Connections** — routes touching this location, from the derived network
   graph, with length, travel time, and intact/damaged/severed status. Rows that
   lead to another city are **clickable** — they fly to and open that city.

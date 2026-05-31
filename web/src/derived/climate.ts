@@ -385,8 +385,8 @@ export function moistureSuitability(precip: number): number {
 const LAND_COVER_CROP: Record<LandCover, number> = {
   cropland: 1.0,
   grassland: 0.8,
+  forest: 0.6, // temperate forest soils are productive once cleared
   wetland: 0.5,
-  forest: 0.45,
   tundra: 0.15,
   desert: 0.1,
   barren: 0.05,
@@ -412,6 +412,8 @@ export interface CropInputs {
   /** 0..100 authored surface water (rivers/irrigation, supplements rainfall). */
   surfaceWater: number;
   landCover: LandCover | null;
+  /** Stylized precipitation (0..100). If omitted, recomputed from the rules. */
+  precip?: number;
 }
 
 /**
@@ -432,7 +434,7 @@ export function cropSuitabilityAt(
   const growTemp = growingSeasonTempC(point, ci.elevationM, inp);
   const warmth = growingWarmth(growTemp) / 100; // 0..1, temperate optimum
 
-  const precip = climateAt(point, ci.elevationM, inp).precip;
+  const precip = ci.precip ?? climateAt(point, ci.elevationM, inp).precip;
   const m0 = moistureSuitability(precip);
   const surface = ci.surfaceWater / 100;
   // Irrigation/rivers can carry a region past what rainfall alone provides.

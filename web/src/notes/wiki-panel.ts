@@ -44,8 +44,8 @@ export interface WikiHost {
   getGraph(): NetworkGraph;
   /** Derived climate at a location — async (samples the elevation DEM). */
   getClimate(detail: LocationDetail): Promise<LocationClimate | null>;
-  /** Derived resource baselines + pins for a location. */
-  getResources(detail: LocationDetail): CityResources | null;
+  /** Derived resource baselines + pins for a location — async (samples the DEM). */
+  getResources(detail: LocationDetail): Promise<CityResources | null>;
   /** Fly to and select another location, re-opening the panel on it. */
   navigateTo(id: string): void;
   /** Reload authored data + rebuild the graph after an edit. */
@@ -189,22 +189,21 @@ function renderPopulation(hostEl: HTMLElement, ctx: RenderCtx): void {
 // --- Resources (derived baselines, overrides shown as pins) -----------------
 
 function renderResources(hostEl: HTMLElement, ctx: RenderCtx): void {
-  const { detail, host, panel } = ctx;
-  const res = host.getResources(detail);
+  const { detail, host } = ctx;
+  hostEl.replaceChildren(emptyNote("Computing resources (sampling elevation)…"));
+  void host.getResources(detail).then((res) => {
+    if (!res) {
+      hostEl.replaceChildren(
+        emptyNote("No coordinates — resources are derived from the climate beneath a city."),
+      );
+      return;
+    }
+    renderResourceView(hostEl, ctx, res);
+  });
+}
 
-  if (!res) {
-    hostEl.replaceChildren(
-      emptyNote("No coordinates — resources are derived from the terrain beneath a city."),
-    );
-    return;
-  }
-  if (res.regionName == null && !RESOURCE_KINDS.some((k) => res.values[k].isPinned)) {
-    hostEl.replaceChildren(
-      emptyNote("No terrain region covers this city, so there is no geographic baseline. Draw/extend a terrain region, or pin values below."),
-    );
-    if (host.canEdit()) hostEl.append(editButton(() => editPins()));
-    return;
-  }
+function renderResourceView(hostEl: HTMLElement, ctx: RenderCtx, res: CityResources): void {
+  const { detail, host, panel } = ctx;
 
   /** Persist the pin map (resource_overrides), then reload + recompute. */
   const commitPins = async (pins: Record<string, number>) => {
@@ -217,7 +216,7 @@ function renderResources(hostEl: HTMLElement, ctx: RenderCtx): void {
     hostEl.replaceChildren();
     if (res.regionName) {
       hostEl.append(
-        el("p", { className: "wiki-muted" }, [`Baselines derived from ${res.regionName}.`]),
+        el("p", { className: "wiki-muted" }, [`Baselines derived from the climate model (${res.regionName}).`]),
       );
     }
     const bars = el("div", { className: "wiki-bars" });
