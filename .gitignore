@@ -1,34 +1,19 @@
 # Dependencies
 node_modules/
-.pnp/
-.pnp.js
 
 # Build output
 dist/
-build/
-.vite/
 
-# Environment / secrets
+# Environment / secrets (keep the example committed)
 .env
 .env.*
 !.env.example
-
-# Large geo data (fetched, not committed — see data/README.md)
-data/raw/
-data/cache/
-*.tif
-*.tiff
-*.mbtiles
-*.pmtiles
-*.osm.pbf
-*.geojsonl
-
-# Supabase local
-supabase/.branches/
-supabase/.temp/
+.env.local
+.env.*.local
+.env.production
 
 # Editor / OS
 .DS_Store
+*.log
 .vscode/
 .idea/
-*.log
