@@ -42,10 +42,18 @@ export function readMapConfig(): MapConfig {
   const styleUrl = str(env.VITE_MAP_STYLE_URL, "");
   return {
     styleUrl: styleUrl === "" ? null : styleUrl,
+    // CARTO "Voyager — no labels": real roads, highways, and rail (which the
+    // routes tool depends on) but NO baked-in place names — so the new-north
+    // rotation can't flip any text upside-down, and the real-world labels stop
+    // fighting the fiction. {s} cycles a/b/c/d subdomains. Override with
+    // VITE_RASTER_TILE_URL (e.g. back to OSM) if desired.
     rasterTileUrl: str(
       env.VITE_RASTER_TILE_URL,
-      "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
     ),
-    rasterAttribution: str(env.VITE_RASTER_ATTRIBUTION, "© OpenStreetMap contributors"),
+    rasterAttribution: str(
+      env.VITE_RASTER_ATTRIBUTION,
+      "© OpenStreetMap contributors © CARTO",
+    ),
   };
 }

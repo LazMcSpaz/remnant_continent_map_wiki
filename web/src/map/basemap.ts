@@ -9,6 +9,13 @@ import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import { AOI, readMapConfig, type MapConfig } from "../config";
 import { bearingToPole, DEFAULT_POLE } from "../derived/climate";
 
+/** Expand a `{s}` subdomain template into explicit a/b/c/d tile URLs (MapLibre
+ *  doesn't interpolate {s} itself). A URL without {s} is returned as-is. */
+function expandSubdomains(url: string): string[] {
+  if (!url.includes("{s}")) return [url];
+  return ["a", "b", "c", "d"].map((s) => url.replace("{s}", s));
+}
+
 /** Build a minimal raster style as a dev fallback when no vector style is set. */
 function rasterStyle(cfg: MapConfig): StyleSpecification {
   return {
@@ -16,7 +23,7 @@ function rasterStyle(cfg: MapConfig): StyleSpecification {
     sources: {
       osm: {
         type: "raster",
-        tiles: [cfg.rasterTileUrl],
+        tiles: expandSubdomains(cfg.rasterTileUrl),
         tileSize: 256,
         attribution: cfg.rasterAttribution,
       },
