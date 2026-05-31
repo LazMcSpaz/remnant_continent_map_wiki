@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
+    "@types/d3-contour": "^3.0.6",
+    "d3-contour": "^4.0.2",
     "maplibre-gl": "^4.7.1",
     "terra-draw": "^1.31.0",
     "terra-draw-maplibre-gl-adapter": "^1.4.1"

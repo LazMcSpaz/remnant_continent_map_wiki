@@ -16,6 +16,7 @@
 // recomputed only when an input that changes drainage moves (the pole, hence
 // sea level + rainfall). Cached by those inputs. Pure given a DEM block.
 
+import type { FeatureCollection, LineString } from "geojson";
 import { AOI } from "../config";
 import { loadDemBlock, elevationFromBlock, type DemBlock } from "./elevation";
 import { climateAt, seaLevelAt, type ClimateInputs } from "./climate";
@@ -31,6 +32,9 @@ export interface HydroGrid {
   strength: Float32Array;
   /** 0..100 river water available near a point (searches a small neighbourhood). */
   waterAt(lng: number, lat: number): number;
+  /** Channels (strength ≥ minStrength) as drainage polylines for crisp drawing.
+   *  Each segment is a cell→receiver link tagged with its strength. */
+  toRiverLines(minStrength: number): FeatureCollection<LineString, { strength: number }>;
 }
 
 // --- a compact binary min-heap over cell indices, keyed by filled elevation ---
@@ -199,6 +203,30 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
         }
       }
       return best;
+    },
+    toRiverLines(minStrength) {
+      // Each channel cell links to its downstream receiver — emit that segment
+      // as a short polyline tagged with the cell's strength. The drainage tree
+      // guarantees these join end-to-end into continuous rivers.
+      const centre = (k: number): [number, number] => {
+        const i = k % W;
+        const j = (k / W) | 0;
+        const lng = w + ((i + 0.5) / W) * (e - w);
+        const lat = n - ((j + 0.5) / H) * (n - s);
+        return [lng, lat];
+      };
+      const features: FeatureCollection<LineString, { strength: number }>["features"] = [];
+      for (let k = 0; k < N; k++) {
+        if (ocean[k] || strength[k] < minStrength) continue;
+        const r = receiver[k];
+        if (r < 0) continue;
+        features.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: [centre(k), centre(r)] },
+          properties: { strength: strength[k] },
+        });
+      }
+      return { type: "FeatureCollection", features };
     },
   };
 }

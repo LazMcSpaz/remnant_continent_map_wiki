@@ -61,12 +61,30 @@ can be added later without re-authoring data (see ADR 0003):
 Per the three-layer model, only these inputs are stored; temperature fields,
 growing-degree-days, and suitability scores are derived at runtime.
 
+## The drawn world (vector cartography)
+
+The **World (drawn)** layer renders the post-shift world as crisp **vector** map
+art instead of a stretched raster. `src/derived/world-vector.ts` *contours* the
+model fields into clean GeoJSON polygons (via `d3-contour`):
+
+- **coastline** — contour `elevation − post-shift sea level` at 0, so the land
+  polygon's outline *is* the new shoreline (drowned Gulf/Hudson Bay included),
+  drawn as a defined line with a soft halo;
+- **biomes** — contour each biome's indicator field into one clean multipolygon,
+  filled with its color — defined regions, not a blur;
+- **rivers** — the hydrology drainage tree emitted as polylines
+  (`HydroGrid.toRiverLines`), width scaling with flow.
+
+`src/derived/world-overlay.ts` styles and shows these. It's traced once from a
+loaded DEM block and cached. This replaces the soft raster look for the "world"
+view; the data-viz rasters (Climate zones, Sea level) remain for inspection.
+
 ## Map extent & layers
 
 The map spans **continental North America** (pannable across Canada/US/Mexico)
 and opens zoomed on the Midwest corridor where the seed data lives. A **Layers**
-panel (top-left) toggles each feature group — Climate zones, Terrain,
-Territories, Routes, City names — on/off; hiding a layer also makes it
+panel (top-left) toggles each feature group — World (drawn), Climate zones,
+Terrain, Territories, Routes, City names — on/off; hiding a layer also makes it
 un-clickable, so you can isolate exactly what you want to select without
 pixel-hunting between overlapping features.
 

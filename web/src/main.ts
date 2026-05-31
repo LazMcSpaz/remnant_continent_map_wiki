@@ -15,6 +15,7 @@ import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
+import { WorldOverlay } from "./derived/world-overlay";
 import { RiversOverlay } from "./derived/rivers-overlay";
 import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { IsochroneOverlay } from "./derived/isochrone-overlay";
@@ -99,6 +100,8 @@ async function boot(): Promise<void> {
     const panelMount = document.querySelector<HTMLElement>(".map-area")
       ?? document.getElementById("app")
       ?? document.body;
+    // The fictional world drawn as crisp vector art (coastline + biomes + rivers).
+    const world = new WorldOverlay(map, setStatus);
     // Derived climate overlay (Phase 2): a static raster, baked once on toggle.
     const climate = new ClimateOverlay(map, setStatus);
     climate.recompute(data);
@@ -466,8 +469,14 @@ async function boot(): Promise<void> {
     // Layers panel: toggle terrain / territories / routes / labels / climate.
     const layersEl = document.getElementById("layers-panel");
     if (layersEl) {
-      mountLayersPanel(layersEl, map, climate, rivers, sim, (visible) =>
-        chokepoints.setVisible(visible, graph, data.routes),
+      mountLayersPanel(
+        layersEl,
+        map,
+        climate,
+        rivers,
+        sim,
+        (visible) => chokepoints.setVisible(visible, graph, data.routes),
+        (visible) => world.setVisible(visible, data),
       );
     }
 
