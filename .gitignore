@@ -17,3 +17,9 @@ dist/
 *.log
 .vscode/
 .idea/
+*.log
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
