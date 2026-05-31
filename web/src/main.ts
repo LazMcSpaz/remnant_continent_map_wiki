@@ -16,6 +16,8 @@ import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { RiversOverlay } from "./derived/rivers-overlay";
+import { SimController } from "./sim/sim-controller";
+import { mountSimControl } from "./sim/sim-control";
 import { mountClimateControl } from "./derived/climate-control";
 import { mountLayersPanel } from "./derived/layers-control";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
@@ -95,6 +97,8 @@ async function boot(): Promise<void> {
     // Derived hydrology overlay: rivers from DEM flow accumulation.
     const rivers = new RiversOverlay(map, setStatus);
     rivers.recompute(data);
+    // Phase 4 — flow simulation over the network graph.
+    const sim = new SimController(map, () => data, () => graph, setStatus);
 
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
@@ -121,6 +125,11 @@ async function boot(): Promise<void> {
         const inp = climateInputs(data.worldSettings);
         const overrides = (detail.resources ?? {}) as Record<string, number>;
         return deriveCityResources(detail.lngLat, overrides, inp);
+      },
+      getPressure: (detail) => {
+        if (!sim.isVisible()) return null;
+        const p = sim.pressureFor(detail.id);
+        return p == null ? null : { pressure: p, turn: sim.maxTurn() };
       },
       canEdit: () => hasBackend(),
       setStatus,
@@ -350,6 +359,7 @@ async function boot(): Promise<void> {
       if (routePanel.isOpen()) routePanel.refresh();
       if (groupPanel.isOpen()) groupPanel.refresh();
       corridorsControl.refresh();
+      sim.onDataChanged();
       // Keep the open corridor's member highlight in sync after edits.
       const gid = groupPanel.currentGroupId();
       if (gid) setHighlightedRoutes(map, memberIdsOf(gid));
@@ -362,7 +372,11 @@ async function boot(): Promise<void> {
 
     // Layers panel: toggle terrain / territories / routes / labels / climate.
     const layersEl = document.getElementById("layers-panel");
-    if (layersEl) mountLayersPanel(layersEl, map, climate, rivers);
+    if (layersEl) mountLayersPanel(layersEl, map, climate, rivers, sim);
+
+    // Flow-simulation control (turn slider, play/step/reset).
+    const simEl = document.getElementById("sim-control");
+    if (simEl) mountSimControl(simEl, sim);
 
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");

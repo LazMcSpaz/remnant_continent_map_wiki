@@ -6,9 +6,10 @@ import type { Map as MlMap } from "maplibre-gl";
 import { setGroupVisible, type LayerGroup } from "../layers/render";
 import type { ClimateOverlay } from "./climate-overlay";
 import type { RiversOverlay } from "./rivers-overlay";
+import type { SimController } from "../sim/sim-controller";
 
 interface Row {
-  id: LayerGroup | "climate" | "water" | "rivers";
+  id: LayerGroup | "climate" | "water" | "rivers" | "sim";
   label: string;
   swatch: string;
   /** Initial checked state. */
@@ -16,6 +17,7 @@ interface Row {
 }
 
 const ROWS: Row[] = [
+  { id: "sim", label: "Simulation (pressure)", swatch: "#d23b3b", on: false },
   { id: "climate", label: "Climate zones", swatch: "#e85d3a", on: false },
   { id: "water", label: "Sea level (flooded)", swatch: "#abd2df", on: false },
   { id: "rivers", label: "Rivers", swatch: "#6fa8c6", on: false },
@@ -30,6 +32,7 @@ export function mountLayersPanel(
   map: MlMap,
   climate: ClimateOverlay,
   rivers: RiversOverlay,
+  sim: SimController,
 ): void {
   container.replaceChildren();
   const heading = document.createElement("h2");
@@ -55,6 +58,7 @@ export function mountLayersPanel(
       if (row.id === "climate") climate.setVisible(cb.checked);
       else if (row.id === "water") climate.setWaterVisible(cb.checked);
       else if (row.id === "rivers") rivers.setVisible(cb.checked);
+      else if (row.id === "sim") sim.setVisible(cb.checked);
       else setGroupVisible(map, row.id, cb.checked);
     });
 

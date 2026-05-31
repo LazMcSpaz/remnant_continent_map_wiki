@@ -177,6 +177,28 @@ so the new coastline reads at a glance. Nothing is sampled until you turn a laye
 on; switching the metric just re-paints from the stored field, and a season
 scrub re-bakes from the cached DEM block (no re-fetch).
 
+## Flow simulation (Phase 4)
+
+A turn-based, deterministic, fully inspectable flow model over the route network
+(`src/sim/`). Each turn every city **produces and consumes** per resource —
+production from its derived resource potentials scaled by population,
+consumption from population demand — then **surplus moves toward deficit across
+the network**: shortest usable paths, capacity-limited per edge, with a
+destroyed edge carrying nothing. Unmet demand after trade becomes a **0..100
+pressure** readout. Because production derives from the climate model, moving
+the pole changes what cities make and need, and the simulation moves with it.
+
+The payoff is the cascade made tangible: a **chokepoint** that, when severed,
+strands supply shows up as pressure spikes in the cities behind it (verified on
+a three-city line — cut the middle edge and the downstream city starves while
+the source backs up). The **Simulation** control (bottom-left) has play / step /
+reset and a **turn slider**; the **Simulation (pressure)** layer paints city
+**pressure halos** (calm green → strained amber → starving red) and the **trade
+flows** moving along routes that turn. A clicked city's **Connections tab** shows
+its current-turn pressure. The engine is pure (`step(prev, graph, baselines)`),
+reads only the network graph + derived baselines, and paints through its own
+overlay — see `src/sim/INTERFACE.md` for the seam.
+
 ## Terrain editor (cascade in action)
 
 Click a **terrain region** (a land-cover area) to open the terrain panel

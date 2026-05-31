@@ -46,6 +46,8 @@ export interface WikiHost {
   getClimate(detail: LocationDetail): Promise<LocationClimate | null>;
   /** Derived resource baselines + pins for a location — async (samples the DEM). */
   getResources(detail: LocationDetail): Promise<CityResources | null>;
+  /** Simulation pressure (0..100) at this location, or null if sim isn't running. */
+  getPressure(detail: LocationDetail): { pressure: number; turn: number } | null;
   /** Fly to and select another location, re-opening the panel on it. */
   navigateTo(id: string): void;
   /** Reload authored data + rebuild the graph after an edit. */
@@ -338,8 +340,23 @@ function renderConnections(hostEl: HTMLElement, ctx: RenderCtx): void {
   const graph = host.getGraph();
   const nodeId = `loc:${detail.id}`;
   const edges = graph.edges.filter((e) => e.from === nodeId || e.to === nodeId);
+
+  // Simulation pressure badge (when the sim is running), above the routes list.
+  const header: HTMLElement[] = [];
+  const sim = host.getPressure(detail);
+  if (sim) {
+    const level = sim.pressure >= 70 ? "bad" : sim.pressure >= 35 ? "warn" : "ok";
+    const word = sim.pressure >= 70 ? "starving" : sim.pressure >= 35 ? "strained" : "supplied";
+    header.push(
+      el("div", { className: "wiki-conn-pressure" }, [
+        el("span", { className: "wiki-bar-label" }, [`Turn ${sim.turn} pressure`]),
+        el("span", { className: `wiki-tag wiki-${level}` }, [`${Math.round(sim.pressure)} · ${word}`]),
+      ]),
+    );
+  }
+
   if (edges.length === 0) {
-    hostEl.replaceChildren(emptyNote("No routes connect to this location."));
+    hostEl.replaceChildren(...header, emptyNote("No routes connect to this location."));
     return;
   }
   const nodeFor = (id: string) => graph.nodes.find((n) => n.id === id);
@@ -372,7 +389,7 @@ function renderConnections(hostEl: HTMLElement, ctx: RenderCtx): void {
     }
     list.append(li);
   }
-  hostEl.replaceChildren(list);
+  hostEl.replaceChildren(...header, list);
 }
 
 // --- Notes (tags, markdown, relative time) ----------------------------------
