@@ -1,16 +1,16 @@
 #:schema node_modules/wrangler/config-schema.json
 # Cloudflare Worker (static assets) config for the Remnant Continent atlas.
 #
-# IMPORTANT: the assets directory is supplied on the DEPLOY COMMAND, not here:
-#
-#     npx wrangler deploy --assets=./dist
-#
 # The Git build runs `npm run build` (Root directory = web) → web/dist, then the
-# deploy uploads ./dist. We deliberately do NOT put an [assets] block here:
-# wrangler 4 forbids using the --assets flag together with [assets] in config,
-# and the flag is what reliably points at the build output. Without the flag the
-# deploy uploads the whole web/ folder (source + node_modules) and serves
-# src/main.ts — which the browser can't run (MIME type video/mp2t).
+# deploy command `npx wrangler versions upload` uploads the assets below.
+# `versions upload` takes NO --assets flag, so the asset directory MUST be
+# declared here. (The earlier "use the --assets flag, not an [assets] block"
+# note applied to `wrangler deploy`, which is no longer the deploy command —
+# with `versions upload` the missing [assets] block is what caused the
+# "Missing entry-point to Worker script or to assets directory" failure.)
 
 name = "remnant-continent-atlas"
 compatibility_date = "2025-05-01"
+
+[assets]
+directory = "./dist"
