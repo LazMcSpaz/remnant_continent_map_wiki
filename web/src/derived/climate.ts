@@ -19,6 +19,16 @@ import type { WorldSettingsGeo, TerrainRegionGeo, LandCover } from "../state/db-
 const DEG2RAD = Math.PI / 180;
 const EARTH_R = 6371; // km
 
+/** Celsius → Fahrenheit (the UI displays °F; the model computes in °C). */
+export function cToF(c: number): number {
+  return c * 9 / 5 + 32;
+}
+
+/** Format a Celsius temperature for display as whole degrees Fahrenheit. */
+export function formatTempF(c: number): string {
+  return `${Math.round(cToF(c))} °F`;
+}
+
 /** Great-circle distance in km between two [lng, lat] points. */
 function haversineKm(a: [number, number], b: [number, number]): number {
   const dLat = (b[1] - a[1]) * DEG2RAD;

@@ -20,6 +20,7 @@ import type { CityResources } from "../derived/resources";
 import { RESOURCE_KINDS, type ResourceKind } from "../derived/resources";
 import type { Note } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
+import { formatTempF } from "../derived/climate";
 
 type TabId = "overview" | "population" | "resources" | "climate" | "connections" | "notes";
 
@@ -315,7 +316,7 @@ function renderClimate(hostEl: HTMLElement, ctx: RenderCtx): void {
     };
     const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(c.windBearing / 45) % 8];
     hostEl.replaceChildren(
-      el("p", { className: "wiki-bignum" }, [`${c.tempC.toFixed(1)} °C`]),
+      el("p", { className: "wiki-bignum" }, [formatTempF(c.tempC)]),
       el("p", { className: "wiki-muted" }, [`mean temperature · ${c.seasonLabel}`]),
       buildDefList([
         ["Biome", c.isWater ? "Submerged (below new sea level)" : c.biomeLabel],
