@@ -30,6 +30,8 @@ export interface LocationClimate {
   precip: number;
   effLat: number;
   elevationM: number | null;
+  isWater: boolean;
+  biomeLabel: string;
   windBand: string;
   windBearing: number;
   seasonLabel: string;
@@ -316,13 +318,14 @@ function renderClimate(hostEl: HTMLElement, ctx: RenderCtx): void {
       el("p", { className: "wiki-bignum" }, [`${c.tempC.toFixed(1)} °C`]),
       el("p", { className: "wiki-muted" }, [`mean temperature · ${c.seasonLabel}`]),
       buildDefList([
+        ["Biome", c.isWater ? "Submerged (below new sea level)" : c.biomeLabel],
         ["Effective latitude", `${Math.abs(c.effLat).toFixed(0)}° ${c.effLat >= 0 ? "N" : "S"}`],
         ["Elevation", c.elevationM == null ? "— (DEM unavailable)" : `${Math.round(c.elevationM)} m`],
         ["Prevailing wind", `${c.windBand} → ${compass}`],
       ]),
       el("div", { className: "wiki-bars" }, [bar("Precipitation", c.precip), bar("Growing", c.warmth)]),
       el("p", { className: "wiki-muted" }, [
-        "Rule-based from the new pole (Peru), season, elevation, and latitude band. Scrub the season (bottom-left) to watch it shift.",
+        "Rule-based from the new pole (Peru): latitude band, real elevation, maritime moderation, orographic rain-shadow, and the post-shift sea level. Scrub the season (bottom-left) to watch it shift.",
       ]),
     );
   });

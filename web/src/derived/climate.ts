@@ -127,6 +127,7 @@ export interface ClimateInputs {
   globalTempOffsetC: number;
   pole: [number, number];
   prevailingWindDeg: number;
+  seaLevelM: number;
 }
 
 /** Pull the climate inputs out of world_settings, with safe fallbacks. */
@@ -143,6 +144,7 @@ export function climateInputs(ws: WorldSettingsGeo | null): ClimateInputs {
     globalTempOffsetC: ws?.global_temp_offset ?? 0,
     pole,
     prevailingWindDeg: ws?.prevailing_wind_deg ?? 270,
+    seaLevelM: ws?.sea_level_m ?? 0,
   };
 }
 
@@ -157,15 +159,16 @@ export function temperatureAt(
   point: [number, number],
   elevationM: number,
   inp: ClimateInputs,
+  maritime = 0,
 ): number {
   const d = poleDistanceDeg(point, inp.pole); // 0..180
   const warmth = Math.sin(d * DEG2RAD); // 0 at poles, 1 at equator
   const base = inp.poleTempC + (inp.equatorTempC - inp.poleTempC) * warmth;
 
   // Seasonal swing: bigger toward the poles; flips by hemisphere (which side of
-  // the new equator). season 0/1 = midwinter, 0.5 = midsummer (new-north side).
+  // the new equator). Water moderates it (mild coasts, extreme interiors).
   const hemisphere = d <= 90 ? 1 : -1;
-  const swing = (inp.axialTiltDeg / 23.5) * (1 - warmth) * 22;
+  const swing = (inp.axialTiltDeg / 23.5) * (1 - warmth) * 22 * (1 - 0.55 * maritime);
   const seasonal = hemisphere * -Math.cos(inp.season * 2 * Math.PI) * swing;
 
   const elevationCooling = (Math.max(0, elevationM) / 1000) * inp.lapseRateCPerKm;
@@ -185,6 +188,12 @@ export interface ClimatePoint {
   windBand: WindBand;
   /** Prevailing wind direction as a map bearing (deg, 0=N, the way it blows). */
   windBearing: number;
+}
+
+export interface Biome {
+  id: string;
+  label: string;
+  color: string;
 }
 
 /** Effective latitude in degrees (−90 new-south .. +90 new-north). */
@@ -209,6 +218,38 @@ function precipBand(absLat: number): number {
   return 12;
 }
 
+/**
+ * Post-shift sea level (m) at a point. A rapid polar shift re-forms the
+ * equatorial bulge around the NEW equator, so the sea surface stands higher
+ * near the new equator and lower near the new poles — old-Arctic lowlands flood,
+ * the new polar regions drain. `sin(distance-from-pole)²` peaks at the equator.
+ */
+const SEA_BULGE_M = 220; // stylized amplitude of the realigned bulge
+export function seaLevelAt(point: [number, number], inp: ClimateInputs): number {
+  const d = poleDistanceDeg(point, inp.pole);
+  return inp.seaLevelM + SEA_BULGE_M * Math.sin(d * DEG2RAD) ** 2;
+}
+
+/** Whittaker-style biome from mean annual temperature + precipitation. */
+export function biomeAt(meanTempC: number, precip: number, isWater: boolean): Biome {
+  if (isWater) return { id: "water", label: "Sea / lake", color: "#2b5d8a" };
+  if (meanTempC < -8) return { id: "ice", label: "Ice / polar desert", color: "#dfe9f0" };
+  if (precip < 20) {
+    return meanTempC < 4
+      ? { id: "tundra", label: "Cold tundra", color: "#9aa7a0" }
+      : { id: "desert", label: "Desert", color: "#d8b15f" };
+  }
+  if (meanTempC < 2) return { id: "tundra", label: "Tundra", color: "#8fa39a" };
+  if (meanTempC >= 22) {
+    return precip >= 60
+      ? { id: "rainforest", label: "Tropical rainforest", color: "#1f7a3a" }
+      : { id: "savanna", label: "Savanna", color: "#b7a84a" };
+  }
+  if (precip >= 55) return { id: "forest", label: "Temperate forest", color: "#2f6b3f" };
+  if (precip >= 32) return { id: "woodland", label: "Woodland / steppe", color: "#6f8f4a" };
+  return { id: "grassland", label: "Grassland / prairie", color: "#9bab57" };
+}
+
 /** Wind band + prevailing bearing at a point, oriented to the new axis. */
 export function windAt(point: [number, number], inp: ClimateInputs): { band: WindBand; bearing: number } {
   const d = poleDistanceDeg(point, inp.pole);
@@ -229,22 +270,35 @@ export function windAt(point: [number, number], inp: ClimateInputs): { band: Win
   return { band, bearing: (toPole + rel + 360) % 360 };
 }
 
+export interface ClimateOptions {
+  /** 0..1 proximity to water — moderates seasons, adds coastal moisture. */
+  maritime?: number;
+  /** −0.5..0.5 orographic precip bonus (windward wet / leeward rain-shadow). */
+  oroBonus?: number;
+  isWater?: boolean;
+}
+
 /**
  * Full per-point climate from the rules: temperature, precipitation, and wind.
- * Precipitation = latitude band, lifted a little by elevation (orographic) and
- * trimmed at very high/cold elevations. Maritime/rain-shadow refinement and the
- * inundation-aware coastline come in the next chunk.
+ * Optional maritime + orographic factors (from neighbour elevation samples)
+ * refine it; pass none for the bare latitude/elevation field.
  */
-export function climateAt(point: [number, number], elevationM: number, inp: ClimateInputs): ClimatePoint {
-  const tempC = temperatureAt(point, elevationM, inp);
+export function climateAt(
+  point: [number, number],
+  elevationM: number,
+  inp: ClimateInputs,
+  opts: ClimateOptions = {},
+): ClimatePoint {
+  const maritime = opts.maritime ?? 0;
+  const tempC = temperatureAt(point, elevationM, inp, maritime);
   const effLat = effLatitude(point, inp.pole);
   let precip = precipBand(Math.abs(effLat));
-  // Mild orographic lift up to ~1500 m, then thinning air dries it out.
+  // Latitude-band lift from elevation (orographic) + windward/leeward + coastal.
   const elev = Math.max(0, elevationM);
-  const oro = elev <= 1500 ? 1 + (elev / 1500) * 0.25 : 1.25 - ((elev - 1500) / 3000) * 0.5;
-  precip = Math.max(0, Math.min(100, precip * Math.max(0.4, oro)));
-  // Hard freeze suppresses precipitation.
-  if (tempC < -10) precip *= 0.5;
+  const elevLift = elev <= 1500 ? 1 + (elev / 1500) * 0.2 : 1.2 - ((elev - 1500) / 3000) * 0.5;
+  precip *= Math.max(0.35, elevLift) * (1 + (opts.oroBonus ?? 0)) * (1 + maritime * 0.4);
+  precip = Math.max(0, Math.min(100, precip));
+  if (tempC < -10) precip *= 0.5; // hard freeze suppresses precipitation
   const w = windAt(point, inp);
   return { tempC, precip: Math.round(precip), effLat, windBand: w.band, windBearing: Math.round(w.bearing) };
 }

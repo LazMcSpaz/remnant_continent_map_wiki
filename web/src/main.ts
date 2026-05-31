@@ -26,8 +26,9 @@ import { RouteWizard } from "./layers/route-wizard";
 import type { Position } from "geojson";
 import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
-import { climateInputs, growingWarmth, climateAt } from "./derived/climate";
-import { sampleElevation as sampleDemElevation } from "./derived/elevation";
+import { climateInputs } from "./derived/climate";
+import { sampleClimate } from "./derived/climate-sample";
+import { growingWarmth } from "./derived/climate";
 import { deriveCityResources } from "./derived/resources";
 import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
@@ -97,15 +98,15 @@ async function boot(): Promise<void> {
       getClimate: async (detail) => {
         if (!detail.lngLat) return null;
         const inp = climateInputs(data.worldSettings);
-        // Sample real elevation from the DEM (null if a tile is unavailable).
-        const elevM = await sampleDemElevation(detail.lngLat[0], detail.lngLat[1]);
-        const c = climateAt(detail.lngLat, elevM ?? 0, inp);
+        const c = await sampleClimate(detail.lngLat, inp); // samples the DEM
         return {
           tempC: c.tempC,
-          warmth: growingWarmth(c.tempC),
+          warmth: growingWarmth(c.meanTempC),
           precip: c.precip,
           effLat: c.effLat,
-          elevationM: elevM,
+          elevationM: c.elevationM,
+          isWater: c.isWater,
+          biomeLabel: c.biome.label,
           windBand: c.windBand,
           windBearing: c.windBearing,
           seasonLabel: seasonName(inp.season),

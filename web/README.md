@@ -112,12 +112,20 @@ and derives **temperature, precipitation, and prevailing wind** for any point:
 - wind band (trade easterlies / westerlies / polar easterlies) oriented to the
   new axis.
 
+It also models the **inundation**: a rapid shift re-forms the equatorial bulge
+around the new equator, so sea level stands higher there — old-Arctic lowlands
+(Hudson Bay) flood into new warm seas while the new polar regions drain. A point
+is water if its real elevation is below the local post-shift sea level. From
+there it adds **maritime moderation** (coasts milder, interiors extreme),
+**orographic rain-shadow** (windward wet, leeward dry, from upwind elevation),
+and a **biome** classification (ice/tundra/desert/grassland/forest/savanna/
+rainforest/sea).
+
 The polar shift to Peru flips the familiar gradient: the old Arctic is the new
-tropics (hot), the Gulf/South is the new cold side, and the Midwest sits
-temperate in between. A clicked city's **Climate tab** shows temperature,
-precipitation, growing warmth, effective latitude, sampled elevation, and wind.
-The inundation model (new sea level → coastlines) and the full-map climate
-overlay are the next chunks.
+tropics (hot, flooded), the Gulf/South is the new cold side, and the Midwest
+sits temperate in between. A clicked city's **Climate tab** shows biome,
+temperature, precipitation, growing warmth, effective latitude, sampled
+elevation, and prevailing wind. The full-map climate overlay is the next chunk.
 
 ## Terrain editor (cascade in action)
 
