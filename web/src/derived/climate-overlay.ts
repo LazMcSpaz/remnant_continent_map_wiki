@@ -185,9 +185,12 @@ export class ClimateOverlay {
       const lat = n - ((j + 0.5) / H) * (n - s);
       for (let i = 0; i < W; i++) {
         const lng = w + ((i + 0.5) / W) * (e - w);
-        const elev = elevationFromBlock(block, lng, lat) ?? 0;
+        const raw = elevationFromBlock(block, lng, lat);
+        const elev = raw ?? 0;
         const sea = seaLevelAt([lng, lat], inp);
-        const isWater = elev <= sea;
+        // Only flood where we actually have elevation data — a missing DEM tile
+        // is unknown ground, not ocean (else blank tiles paint as water).
+        const isWater = raw !== null && elev <= sea;
         const maritime = isWater ? 1 : 0;
         const c = climateAt([lng, lat], elev, inp, { maritime, isWater });
         const meanT = temperatureAt([lng, lat], elev, { ...inp, season: 0.25 }, maritime);
@@ -303,7 +306,7 @@ export class ClimateOverlay {
           type: "raster",
           source: WATER_SRC,
           layout: { visibility: this.waterVisible ? "visible" : "none" },
-          paint: { "raster-opacity": 0.66, "raster-resampling": "linear", "raster-fade-duration": 0 },
+          paint: { "raster-opacity": 0.85, "raster-resampling": "linear", "raster-fade-duration": 0 },
         },
         before,
       );

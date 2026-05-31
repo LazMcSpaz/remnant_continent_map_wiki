@@ -106,7 +106,7 @@ export function mountClimateControl(
     else legend.append(swatchList(BIOME_LEGEND.map((b) => ({ label: b.label, color: b.color }))));
     // Sea-level key (its own toggleable layer in the Layers panel).
     legend.append(
-      swatchList([{ label: "Sea level — flooded", color: "#1f5d8c" }]),
+      swatchList([{ label: "Sea level — flooded", color: "#abd2df" }]),
     );
   };
 
