@@ -9,7 +9,7 @@ import type { RiversOverlay } from "./rivers-overlay";
 import type { SimController } from "../sim/sim-controller";
 
 interface Row {
-  id: LayerGroup | "climate" | "water" | "rivers" | "sim";
+  id: LayerGroup | "climate" | "water" | "rivers" | "sim" | "chokepoints";
   label: string;
   swatch: string;
   /** Initial checked state. */
@@ -18,6 +18,7 @@ interface Row {
 
 const ROWS: Row[] = [
   { id: "sim", label: "Simulation (pressure)", swatch: "#d23b3b", on: false },
+  { id: "chokepoints", label: "Chokepoints", swatch: "#d23b3b", on: false },
   { id: "climate", label: "Climate zones", swatch: "#e85d3a", on: false },
   { id: "water", label: "Sea level (flooded)", swatch: "#abd2df", on: false },
   { id: "rivers", label: "Rivers", swatch: "#6fa8c6", on: false },
@@ -33,6 +34,7 @@ export function mountLayersPanel(
   climate: ClimateOverlay,
   rivers: RiversOverlay,
   sim: SimController,
+  onChokepoint: (visible: boolean) => void,
 ): void {
   container.replaceChildren();
   const heading = document.createElement("h2");
@@ -59,6 +61,7 @@ export function mountLayersPanel(
       else if (row.id === "water") climate.setWaterVisible(cb.checked);
       else if (row.id === "rivers") rivers.setVisible(cb.checked);
       else if (row.id === "sim") sim.setVisible(cb.checked);
+      else if (row.id === "chokepoints") onChokepoint(cb.checked);
       else setGroupVisible(map, row.id, cb.checked);
     });
 

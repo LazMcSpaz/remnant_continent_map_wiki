@@ -18,6 +18,8 @@ import type {
 import { getSupabase } from "../state/supabase";
 import type {
   Faction,
+  FactionRelation,
+  RelationLevel,
   LocationGeo,
   RouteGeo,
   TerritoryGeo,
@@ -31,6 +33,8 @@ import type {
 
 export interface FeatureData {
   factions: Map<string, Faction>;
+  /** Pairwise faction stance rows (allies/friendly/tense/hostile). */
+  factionRelations: FactionRelation[];
   locations: FeatureCollection<Point | Polygon, LocationProps>;
   routes: FeatureCollection<LineString, RouteProps>;
   territories: FeatureCollection<MultiPolygon, TerritoryProps>;
@@ -131,6 +135,7 @@ export async function loadFeatures(): Promise<FeatureData> {
   const factions = new Map<string, Faction>();
   const data: FeatureData = {
     factions,
+    factionRelations: [],
     locations: emptyFC<Point | Polygon, LocationProps>(),
     routes: emptyFC<LineString, RouteProps>(),
     territories: emptyFC<MultiPolygon, TerritoryProps>(),
@@ -145,9 +150,10 @@ export async function loadFeatures(): Promise<FeatureData> {
   };
   if (!sb) return data;
 
-  const [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes] =
+  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes] =
     await Promise.all([
       sb.from("factions").select("*"),
+      sb.from("faction_relations").select("*"),
       sb.from("locations_geojson").select("*"),
       sb.from("routes_geojson").select("*"),
       sb.from("territories_geojson").select("*"),
@@ -158,10 +164,11 @@ export async function loadFeatures(): Promise<FeatureData> {
       sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
     ]);
 
-  for (const res of [factionsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
+  for (const res of [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
     if (res.error) throw new Error(`Supabase load failed: ${res.error.message}`);
   }
   data.worldSettings = (worldRes.data as WorldSettingsGeo | null) ?? null;
+  data.factionRelations = (relationsRes.data ?? []) as FactionRelation[];
   data.routeGroups = (groupsRes.data ?? []) as RouteGroup[];
   data.groupMembers = (membersRes.data ?? []) as RouteGroupMember[];
 
@@ -552,6 +559,43 @@ export async function updateLocationFields(
   if (!sb) throw new Error("No backend configured — editing is unavailable.");
   const { error } = await sb.from("locations").update(fields).eq("id", id);
   if (error) throw new Error(`update location failed: ${error.message}`);
+}
+
+/** Update authored faction economy attributes (tech level, influence). */
+export async function updateFaction(
+  id: string,
+  fields: Partial<{ name: string; color: string; tech_level: number; influence: number }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("factions").update(fields).eq("id", id);
+  if (error) throw new Error(`update faction failed: ${error.message}`);
+}
+
+/**
+ * Set the stance between two factions. Relations are symmetric and stored once
+ * per unordered pair (faction_a < faction_b), so we canonicalize the ids and
+ * upsert. Setting "friendly" (the default) deletes the row to keep the table
+ * sparse — absence means the baseline friendly stance.
+ */
+export async function setFactionRelation(
+  factionX: string,
+  factionY: string,
+  level: RelationLevel,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  if (factionX === factionY) throw new Error("A faction has no relation to itself.");
+  const [a, b] = factionX < factionY ? [factionX, factionY] : [factionY, factionX];
+  if (level === "friendly") {
+    const { error } = await sb.from("faction_relations").delete().eq("faction_a", a).eq("faction_b", b);
+    if (error) throw new Error(`clear relation failed: ${error.message}`);
+    return;
+  }
+  const { error } = await sb
+    .from("faction_relations")
+    .upsert({ faction_a: a, faction_b: b, level }, { onConflict: "faction_a,faction_b" });
+  if (error) throw new Error(`set relation failed: ${error.message}`);
 }
 
 /** Update world_settings scalar climate inputs (season, temps, pole numbers). */

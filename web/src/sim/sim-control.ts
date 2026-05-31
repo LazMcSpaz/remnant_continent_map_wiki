@@ -3,6 +3,13 @@
 // pressure summary. Talks only to a SimHost (implemented in main.ts) so it owns
 // no engine, map, or data state — consistent with the layered design.
 
+export interface FactionWealth {
+  id: string;
+  name: string;
+  color: string;
+  wealth: number;
+}
+
 export interface SimSummary {
   turn: number;
   /** Number of cities in the simulated network. */
@@ -13,6 +20,8 @@ export interface SimSummary {
   strained: number;
   /** Total trade volume moved this turn. */
   tradeVolume: number;
+  /** Faction wealth ranking (richest first) — who benefits from surplus. */
+  wealth: FactionWealth[];
 }
 
 export interface SimHost {
@@ -79,12 +88,18 @@ export function mountSimControl(container: HTMLElement, host: SimHost): void {
     turnLabel.textContent = `Turn ${s.turn}`;
     slider.max = String(Math.max(MAX_SLIDER, host.maxTurn()));
     slider.value = String(s.turn);
-    readout.replaceChildren(
+    const rows: HTMLElement[] = [
       stat("Cities", String(s.cities)),
       stat("Mean pressure", s.meanPressure.toFixed(0)),
       stat("Strained", String(s.strained)),
       stat("Trade / turn", s.tradeVolume.toFixed(0)),
-    );
+    ];
+    // Wealth ranking — who benefits from the surplus (richest first).
+    if (s.wealth.length) {
+      rows.push(sectionLabel("Faction wealth"));
+      for (const f of s.wealth) rows.push(wealthRow(f.name, f.color, f.wealth));
+    }
+    readout.replaceChildren(...rows);
   };
 
   const stopPlay = (): void => {
@@ -139,6 +154,31 @@ function stat(label: string, value: string): HTMLElement {
   const v = document.createElement("span");
   v.className = "sim-stat-val";
   v.textContent = value;
+  row.append(l, v);
+  return row;
+}
+
+function sectionLabel(text: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "sim-section";
+  el.textContent = text;
+  return el;
+}
+
+function wealthRow(name: string, color: string, wealth: number): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "sim-stat";
+  const l = document.createElement("span");
+  l.className = "sim-stat-label sim-wealth-name";
+  const sw = document.createElement("span");
+  sw.className = "legend-swatch";
+  sw.style.background = color;
+  const txt = document.createElement("span");
+  txt.textContent = name;
+  l.append(sw, txt);
+  const v = document.createElement("span");
+  v.className = "sim-stat-val";
+  v.textContent = Math.round(wealth).toLocaleString();
   row.append(l, v);
   return row;
 }

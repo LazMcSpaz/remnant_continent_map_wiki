@@ -36,6 +36,20 @@ export interface Faction extends Timestamps {
   id: Uuid;
   name: string;
   color: string;
+  /** Authored 1..10; scales production in the simulation (5 = baseline). */
+  tech_level: number;
+  /** Authored manual influence score; reserved for later systems. */
+  influence: number;
+}
+
+/** Symmetric pairwise stance between two factions; gates surplus sharing. */
+export type RelationLevel = "allies" | "friendly" | "tense" | "hostile";
+
+export interface FactionRelation extends Timestamps {
+  id: Uuid;
+  faction_a: Uuid;
+  faction_b: Uuid;
+  level: RelationLevel;
 }
 
 export interface TravelMode extends Timestamps {

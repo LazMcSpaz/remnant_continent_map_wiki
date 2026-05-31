@@ -12,7 +12,7 @@
 
 import type { Feature, FeatureCollection, Geometry, Point, LineString, Polygon } from "geojson";
 import { getSupabase } from "./supabase";
-import type { Faction, TravelMode, Note } from "./db-types";
+import type { Faction, TravelMode, Note, RelationLevel } from "./db-types";
 import {
   createLocation,
   createRoute,
@@ -63,7 +63,9 @@ export interface Snapshot {
   version: number;
   exportedAt: string;
   features: FeatureCollection<Geometry, Record<string, unknown>>;
-  factions: Array<Pick<Faction, "id" | "name" | "color">>;
+  factions: Array<Pick<Faction, "id" | "name" | "color" | "tech_level" | "influence">>;
+  /** Pairwise faction stance, by faction id (remapped on import). */
+  factionRelations: Array<{ faction_a: string; faction_b: string; level: RelationLevel }>;
   travelModes: Array<Pick<TravelMode, "id" | "label" | "speed_kph">>;
   worldSettings: WorldSettingsExport | null;
   notes: Array<Pick<Note, "target_type" | "target_id" | "body" | "tags" | "links">>;
@@ -90,9 +92,10 @@ export async function exportSnapshot(): Promise<Snapshot> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — nothing to export.");
 
-  const [factions, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members] =
+  const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members] =
     await Promise.all([
-      sb.from("factions").select("id,name,color"),
+      sb.from("factions").select("id,name,color,tech_level,influence"),
+      sb.from("faction_relations").select("faction_a,faction_b,level"),
       sb.from("travel_modes").select("id,label,speed_kph"),
       sb.from("locations_geojson").select("*"),
       sb.from("routes_geojson").select("*"),
@@ -105,7 +108,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
       sb.from("route_group_members").select("group_id,route_id"),
     ]);
 
-  for (const r of [factions, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members]) {
+  for (const r of [factions, relations, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members]) {
     if (r.error) throw new Error(`Export failed: ${r.error.message}`);
   }
 
@@ -166,6 +169,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
     exportedAt: new Date().toISOString(),
     features: { type: "FeatureCollection", features },
     factions: (factions.data ?? []) as Snapshot["factions"],
+    factionRelations: (relations.data ?? []) as Snapshot["factionRelations"],
     travelModes: (travelModes.data ?? []) as Snapshot["travelModes"],
     worldSettings,
     notes: (notes.data ?? []) as Snapshot["notes"],
@@ -248,7 +252,7 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
   for (const f of snap.factions) {
     const { data, error } = await sb
       .from("factions")
-      .insert({ name: f.name, color: f.color })
+      .insert({ name: f.name, color: f.color, tech_level: f.tech_level ?? 5, influence: f.influence ?? 0 })
       .select("id")
       .single();
     if (error) result.errors.push(`faction "${f.name}": ${error.message}`);
@@ -256,6 +260,17 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
       factionIdMap.set(f.id, (data as { id: string }).id);
       result.factions++;
     }
+  }
+
+  // Faction relations, remapped to the freshly-inserted faction ids and
+  // re-canonicalized (faction_a < faction_b) so the unique/check holds.
+  for (const rel of snap.factionRelations ?? []) {
+    const a = factionIdMap.get(rel.faction_a);
+    const b = factionIdMap.get(rel.faction_b);
+    if (!a || !b) continue; // a referenced faction wasn't imported
+    const [x, y] = a < b ? [a, b] : [b, a];
+    const { error } = await sb.from("faction_relations").insert({ faction_a: x, faction_b: y, level: rel.level });
+    if (error) result.errors.push(`faction relation: ${error.message}`);
   }
 
   for (const m of snap.travelModes) {

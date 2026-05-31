@@ -16,6 +16,7 @@ import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { RiversOverlay } from "./derived/rivers-overlay";
+import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { SimController } from "./sim/sim-controller";
 import { mountSimControl } from "./sim/sim-control";
 import { mountClimateControl } from "./derived/climate-control";
@@ -24,6 +25,9 @@ import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
 import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-panel";
 import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
+import { mountFactionsControl, type FactionsHost } from "./notes/factions-control";
+import { updateFaction, setFactionRelation } from "./layers/features";
+import { buildRelationFn } from "./sim/relations";
 import { createRouteGroup, addRouteGroupMember, createRoute } from "./layers/features";
 import { RouteWizard } from "./layers/route-wizard";
 import type { Position } from "geojson";
@@ -99,6 +103,9 @@ async function boot(): Promise<void> {
     rivers.recompute(data);
     // Phase 4 — flow simulation over the network graph.
     const sim = new SimController(map, () => data, () => graph, setStatus);
+    // Phase 4 analysis — chokepoint / centrality detection over the graph.
+    const chokepoints = new ChokepointOverlay(map, setStatus);
+    chokepoints.recompute(graph, data.routes);
 
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
@@ -184,6 +191,11 @@ async function boot(): Promise<void> {
     };
     const routeHost: RouteHost = {
       getRoute: findRoute,
+      getChokepoint: (routeId) => {
+        const a = chokepoints.getAnalysis();
+        const e = a?.edges.find((x) => x.routeId === routeId);
+        return e ? { score: e.score, betweenness: e.betweenness, cutImpact: e.cutImpact } : null;
+      },
       factions: () => [...data.factions.values()],
       getBreaks: (routeId) => data.routeBreaks.filter((b) => b.route_id === routeId),
       beginPlaceBreak: (routeId, kind) => {
@@ -284,6 +296,33 @@ async function boot(): Promise<void> {
       corridorsHost,
     );
 
+    // Factions panel: economy attributes (tech, influence) + relationship matrix.
+    const factionsHost: FactionsHost = {
+      listFactions: () => [...data.factions.values()],
+      relation: (a, b) => {
+        const lv = buildRelationFn(data.factionRelations)(a, b);
+        return lv === "self" ? "friendly" : lv; // db stance has no "self"
+      },
+      wealth: (id) => (sim.isVisible() ? sim.wealthFor(id) : null),
+      setTechLevel: async (id, tech) => {
+        await updateFaction(id, { tech_level: tech });
+        applyData(await loadFeatures());
+      },
+      setInfluence: async (id, influence) => {
+        await updateFaction(id, { influence });
+        applyData(await loadFeatures());
+      },
+      setRelation: async (a, b, level) => {
+        await setFactionRelation(a, b, level);
+        applyData(await loadFeatures());
+      },
+      canEdit: () => hasBackend(),
+    };
+    const factionsControl = mountFactionsControl(
+      document.getElementById("factions-panel") ?? document.createElement("div"),
+      factionsHost,
+    );
+
     // Esc ends corridor add-members mode.
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && addingToGroupId) {
@@ -354,11 +393,13 @@ async function boot(): Promise<void> {
       updateFeatureData(map, next);
       climate.recompute(next);
       rivers.recompute(next);
+      chokepoints.recompute(graph, next.routes);
       if (wiki.isOpen()) wiki.rerenderActive();
       if (terrainPanel.isOpen()) terrainPanel.refresh();
       if (routePanel.isOpen()) routePanel.refresh();
       if (groupPanel.isOpen()) groupPanel.refresh();
       corridorsControl.refresh();
+      factionsControl.refresh();
       sim.onDataChanged();
       // Keep the open corridor's member highlight in sync after edits.
       const gid = groupPanel.currentGroupId();
@@ -372,7 +413,11 @@ async function boot(): Promise<void> {
 
     // Layers panel: toggle terrain / territories / routes / labels / climate.
     const layersEl = document.getElementById("layers-panel");
-    if (layersEl) mountLayersPanel(layersEl, map, climate, rivers, sim);
+    if (layersEl) {
+      mountLayersPanel(layersEl, map, climate, rivers, sim, (visible) =>
+        chokepoints.setVisible(visible, graph, data.routes),
+      );
+    }
 
     // Flow-simulation control (turn slider, play/step/reset).
     const simEl = document.getElementById("sim-control");

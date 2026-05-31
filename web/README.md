@@ -181,12 +181,23 @@ scrub re-bakes from the cached DEM block (no re-fetch).
 
 A turn-based, deterministic, fully inspectable flow model over the route network
 (`src/sim/`). Each turn every city **produces and consumes** per resource —
-production from its derived resource potentials scaled by population,
-consumption from population demand — then **surplus moves toward deficit across
-the network**: shortest usable paths, capacity-limited per edge, with a
-destroyed edge carrying nothing. Unmet demand after trade becomes a **0..100
-pressure** readout. Because production derives from the climate model, moving
-the pole changes what cities make and need, and the simulation moves with it.
+production from its derived resource potentials scaled by population **and its
+faction's tech level** — then **surplus moves toward deficit across the
+network**: shortest usable paths, capacity-limited per edge, with a destroyed
+edge carrying nothing. Unmet demand after trade becomes a **0..100 pressure**
+readout. Because production derives from the climate model, moving the pole
+changes what cities make and need, and the simulation moves with it.
+
+**Faction economy.** Sharing is **relationship-gated**: cities of the same
+faction trade freely, while across faction lines a pairwise stance —
+**allies > friendly > tense > hostile** — scales how much surplus crosses (an
+ally gets the lion's share, a tense partner a trickle, a hostile neighbour
+nothing). A **wealth** metric (derived, never stored) accrues each turn to the
+faction that produces and exports surplus, so you can see who actually benefits.
+**Tech level** (1–10, authored) directly scales production, and an authored
+**influence** score is recorded for later systems. Edit all of this — tech,
+influence, and the relationship matrix — in the **Factions** panel (top-left);
+the **Simulation** control shows the live faction **wealth ranking**.
 
 The payoff is the cascade made tangible: a **chokepoint** that, when severed,
 strands supply shows up as pressure spikes in the cities behind it (verified on
@@ -198,6 +209,26 @@ flows** moving along routes that turn. A clicked city's **Connections tab** show
 its current-turn pressure. The engine is pure (`step(prev, graph, baselines)`),
 reads only the network graph + derived baselines, and paints through its own
 overlay — see `src/sim/INTERFACE.md` for the seam.
+
+## Network analysis — chokepoints (Phase 4)
+
+`src/derived/network-analysis.ts` detects the bottlenecks the route network
+depends on, from two complementary signals (both pure functions of the graph,
+weighted by travel time over usable edges):
+
+- **betweenness** — how many shortest city-to-city paths run through an edge;
+  a junction everything funnels through scores high;
+- **cut impact** — how many connected city-pairs lose their link (or get >50%
+  slower) if that single edge is removed. This is the truest chokepoint signal:
+  a sole bridge between two clusters strands every pair across it.
+
+The **Chokepoints** layer paints the routes by combined score (thin cool →
+thick red), so the critical links stand out; a route's panel shows its
+chokepoint score and label (well-connected / sole link / chokepoint / critical
+chokepoint). The README's expectation holds — a sole river crossing surfaces on
+its own, because severing it disconnects everything beyond it. Verified on a
+two-cluster graph: the lone bridge scores 1.00 on both signals while the
+redundant triangle edges stay low.
 
 ## Terrain editor (cascade in action)
 
