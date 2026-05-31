@@ -66,8 +66,11 @@ export function poleDistanceDeg(point: [number, number], pole: [number, number])
   return (km / (Math.PI * EARTH_R)) * 180;
 }
 
+/** Default new North Pole — Peru — used before world_settings loads. */
+export const DEFAULT_POLE: [number, number] = [-75, -10];
+
 /** Initial map bearing (deg, 0=N, clockwise) from a point toward the pole. */
-function bearingToPole(point: [number, number], pole: [number, number]): number {
+export function bearingToPole(point: [number, number], pole: [number, number]): number {
   const φ1 = point[1] * DEG2RAD;
   const φ2 = pole[1] * DEG2RAD;
   const dλ = (pole[0] - point[0]) * DEG2RAD;
@@ -144,7 +147,7 @@ export interface ClimateInputs {
 export function climateInputs(ws: WorldSettingsGeo | null): ClimateInputs {
   const pole = ws?.pole_geometry
     ? ([ws.pole_geometry.coordinates[0], ws.pole_geometry.coordinates[1]] as [number, number])
-    : ([-75, -10] as [number, number]); // default new pole: Peru
+    : DEFAULT_POLE; // default new pole: Peru
   return {
     equatorTempC: ws?.equator_temp_c ?? 28,
     poleTempC: ws?.pole_temp_c ?? -30,
@@ -331,12 +334,51 @@ export function climateAt(
 }
 
 /**
- * Growing-degree-day-ish score (0..100): warmth available for crops, above a
- * 5°C base, saturating near 25°C. A coarse stand-in for the growing season.
+ * Warm-season ("growing season") mean temperature (°C). Agricultural potential
+ * should reflect the warmth a crop sees *while growing*, and it must NOT flip
+ * when the season scrubber moves — so we evaluate the warm extreme of the
+ * annual swing rather than the current season. Maritime moderation lowers the
+ * summer peak (mild coasts, hotter interiors).
  */
-export function growingWarmth(tempC: number): number {
-  const gdd = Math.max(0, tempC - 5);
-  return Math.max(0, Math.min(100, (gdd / 20) * 100));
+export function growingSeasonTempC(
+  point: [number, number],
+  elevationM: number,
+  inp: ClimateInputs,
+  maritime = 0,
+): number {
+  const d = poleDistanceDeg(point, inp.pole);
+  const warmth = Math.sin(d * DEG2RAD);
+  const base = inp.poleTempC + (inp.equatorTempC - inp.poleTempC) * warmth;
+  const swing = (inp.axialTiltDeg / 23.5) * (1 - warmth) * 22 * (1 - 0.55 * maritime);
+  const elevationCooling = (Math.max(0, elevationM) / 1000) * inp.lapseRateCPerKm;
+  return base + Math.abs(swing) - elevationCooling + inp.globalTempOffsetC;
+}
+
+/**
+ * Warmth available for crops (0..100) from the growing-season temperature — an
+ * **optimum band**, not "hotter is always better": too cold to grow below ~5°C,
+ * a temperate optimum ~20–28°C, then heat stress above. This is what rewards
+ * the mild temperate zone (the new Midwest) over both frozen ground and the
+ * scorching new tropics.
+ */
+export function growingWarmth(growTempC: number): number {
+  if (growTempC <= 5 || growTempC >= 42) return 0;
+  if (growTempC < 20) return ((growTempC - 5) / 15) * 100; // ramp up to optimum
+  if (growTempC <= 28) return 100; // temperate optimum
+  return Math.max(0, (1 - (growTempC - 28) / 14) * 100); // heat falloff
+}
+
+/**
+ * Moisture available for crops (0..1) from stylized precipitation (0..100):
+ * rises out of aridity, plateaus through a well-watered optimum, then eases off
+ * where it is wet enough that waterlogging bites. Temperate-forest rainfall
+ * sits squarely in the optimum.
+ */
+export function moistureSuitability(precip: number): number {
+  if (precip <= 8) return 0.06;
+  if (precip < 55) return 0.06 + ((precip - 8) / 47) * 0.94; // → 1.0 at 55
+  if (precip <= 85) return 1; // optimum
+  return Math.max(0.75, 1 - (precip - 85) / 60); // mild waterlogging
 }
 
 /** How well land cover supports cultivation (0..1 multiplier). */
@@ -355,43 +397,78 @@ const LAND_COVER_CROP: Record<LandCover, number> = {
 export interface CropResult {
   /** 0..100 overall suitability. */
   suitability: number;
+  /** Growing-season temperature (°C) the warmth score came from. */
   tempC: number;
   warmth: number;
   /** The limiting factor, for inspectability. */
   limiting: "temperature" | "water" | "soil" | "land cover" | "balanced";
 }
 
+/** The geography a crop calculation needs at a point. */
+export interface CropInputs {
+  elevationM: number;
+  /** 0..100 soil fertility. */
+  soilFertility: number;
+  /** 0..100 authored surface water (rivers/irrigation, supplements rainfall). */
+  surfaceWater: number;
+  landCover: LandCover | null;
+}
+
 /**
- * Crop suitability for a terrain region: the product of warmth, soil fertility,
- * water availability, and land-cover support. Returns the limiting factor so a
- * result can always be explained — "Denvar valley is water-limited", etc.
+ * Crop suitability at a point — the shared core used for both a city (its own
+ * coordinates) and a terrain region (its centroid), so they never diverge.
+ *
+ * Warmth (growing-season, optimum band) and moisture (rainfall + irrigation)
+ * are **gating** factors; soil fertility and land cover **modulate** without
+ * ever zeroing a viable climate — cleared temperate forest is prime farmland,
+ * so a forested cover shouldn't disqualify it, but rich soil is rewarded. The
+ * smallest factor is returned as the limiter so a result can be explained.
  */
-export function cropSuitability(
-  region: TerrainRegionGeo,
+export function cropSuitabilityAt(
+  point: [number, number],
+  ci: CropInputs,
   inp: ClimateInputs,
 ): CropResult {
-  const point = regionCentroid(region.geometry);
-  const elev = region.elevation_m ?? 0;
-  const tempC = temperatureAt(point, elev, inp);
-  const warmth = growingWarmth(tempC) / 100; // 0..1
+  const growTemp = growingSeasonTempC(point, ci.elevationM, inp);
+  const warmth = growingWarmth(growTemp) / 100; // 0..1, temperate optimum
 
-  const fertility = (region.soil_fertility ?? 50) / 100;
-  const water = (region.surface_water ?? 50) / 100;
-  const cover = region.land_cover ? LAND_COVER_CROP[region.land_cover] : 0.5;
+  const precip = climateAt(point, ci.elevationM, inp).precip;
+  const m0 = moistureSuitability(precip);
+  const surface = ci.surfaceWater / 100;
+  // Irrigation/rivers can carry a region past what rainfall alone provides.
+  const moisture = m0 + 0.4 * surface * (1 - m0);
 
-  const suitability = Math.round(warmth * fertility * water * cover * 100);
+  const fertility = ci.soilFertility / 100;
+  const cover = ci.landCover ? LAND_COVER_CROP[ci.landCover] : 0.5;
 
-  // Identify the smallest factor as the limiter (for narratable output).
+  const suitability = Math.round(
+    warmth * moisture * (0.45 + 0.55 * fertility) * (0.55 + 0.45 * cover) * 100,
+  );
+
   const factors: Array<[CropResult["limiting"], number]> = [
     ["temperature", warmth],
+    ["water", moisture],
     ["soil", fertility],
-    ["water", water],
     ["land cover", cover],
   ];
   factors.sort((a, b) => a[1] - b[1]);
   const limiting = factors[0][1] > 0.7 ? "balanced" : factors[0][0];
 
-  return { suitability, tempC, warmth: warmth * 100, limiting };
+  return { suitability, tempC: growTemp, warmth: warmth * 100, limiting };
+}
+
+/** Crop suitability for a terrain region (evaluated at its centroid). */
+export function cropSuitability(region: TerrainRegionGeo, inp: ClimateInputs): CropResult {
+  return cropSuitabilityAt(
+    regionCentroid(region.geometry),
+    {
+      elevationM: region.elevation_m ?? 0,
+      soilFertility: region.soil_fertility ?? 50,
+      surfaceWater: region.surface_water ?? 50,
+      landCover: region.land_cover ?? null,
+    },
+    inp,
+  );
 }
 
 export type ClimateMetric = "temperature" | "crops";
@@ -414,8 +491,9 @@ export function deriveClimate(
   const inp = climateInputs(ws);
   const out = new Map<string, RegionDerived>();
   for (const r of regions) {
+    const tempC = temperatureAt(regionCentroid(r.geometry), r.elevation_m ?? 0, inp);
     const crop = cropSuitability(r, inp);
-    out.set(r.id, { id: r.id, tempC: crop.tempC, crop });
+    out.set(r.id, { id: r.id, tempC, crop });
   }
   return out;
 }

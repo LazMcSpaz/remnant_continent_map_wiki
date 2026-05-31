@@ -4,7 +4,7 @@
 // pure rules (climate.ts) and the browser DEM sampler (elevation.ts).
 
 import type { ClimateInputs, ClimatePoint, Biome } from "./climate";
-import { climateAt, biomeAt, temperatureAt, seaLevelAt, windAt } from "./climate";
+import { climateAt, biomeAt, temperatureAt, growingSeasonTempC, seaLevelAt, windAt } from "./climate";
 import { sampleElevation } from "./elevation";
 
 export interface SampledClimate extends ClimatePoint {
@@ -17,6 +17,8 @@ export interface SampledClimate extends ClimatePoint {
   biome: Biome;
   /** Annual mean temperature (seasonless) used for the biome. */
   meanTempC: number;
+  /** Warm-season ("growing season") mean temperature — drives growing warmth. */
+  growSeasonTempC: number;
 }
 
 const KM_PER_DEG_LAT = 111.32;
@@ -59,7 +61,8 @@ export async function sampleClimate(point: [number, number], inp: ClimateInputs)
 
   const c = climateAt(point, elev, inp, { maritime, oroBonus, isWater });
   const meanTempC = temperatureAt(point, elev, { ...inp, season: 0.25 }, maritime); // seasonless
+  const growSeasonTempC = growingSeasonTempC(point, elev, inp, maritime);
   const biome = biomeAt(meanTempC, c.precip, isWater);
 
-  return { ...c, elevationM: elevRaw, isWater, maritime, biome, meanTempC };
+  return { ...c, elevationM: elevRaw, isWater, maritime, biome, meanTempC, growSeasonTempC };
 }

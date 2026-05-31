@@ -13,16 +13,10 @@
 
 import type { TerrainRegionGeo, LandCover } from "../state/db-types";
 import type { ClimateInputs } from "./climate";
-import { regionAt, temperatureAt, growingWarmth } from "./climate";
+import { regionAt, cropSuitabilityAt } from "./climate";
 
 export const RESOURCE_KINDS = ["food", "water", "energy", "production"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
-
-/** Land-cover support for cultivation (food) — shared shape with crops. */
-const LAND_COVER_CROP: Record<LandCover, number> = {
-  cropland: 1.0, grassland: 0.8, wetland: 0.5, forest: 0.45, tundra: 0.15,
-  desert: 0.1, barren: 0.05, urban: 0.3, water: 0,
-};
 
 /** Land-cover support for development/production (buildable land). */
 const LAND_COVER_BUILD: Record<LandCover, number> = {
@@ -89,22 +83,31 @@ function baselinesFor(
   inp: ClimateInputs,
 ): Record<ResourceKind, number> {
   const elev = region.elevation_m ?? 0;
-  const tempC = temperatureAt(lngLat, elev, inp);
-  const warmth = growingWarmth(tempC) / 100; // 0..1
-
-  const fertility = (region.soil_fertility ?? 50) / 100;
   const water = (region.surface_water ?? 50) / 100;
-  const cover = region.land_cover ? LAND_COVER_CROP[region.land_cover] : 0.5;
   const build = region.land_cover ? LAND_COVER_BUILD[region.land_cover] : 0.5;
   const wind = (region.wind_exposure ?? 50) / 100;
   const solar = (region.solar_exposure ?? 50) / 100;
+
+  // Food uses the shared crop core at the city's own coordinates (growing-season
+  // warmth × rainfall/irrigation moisture × soil × cover) — so a mild, wet
+  // temperate-forest site scores well, a frozen or arid one does not.
+  const food = cropSuitabilityAt(
+    lngLat,
+    {
+      elevationM: elev,
+      soilFertility: region.soil_fertility ?? 50,
+      surfaceWater: region.surface_water ?? 50,
+      landCover: region.land_cover ?? null,
+    },
+    inp,
+  ).suitability;
 
   // Steep land is harder to build on.
   const slope = region.slope_deg ?? 0;
   const slopeFactor = Math.max(0.3, 1 - slope / 30); // 1 flat → 0.3 at 30°+
 
   return {
-    food: clamp100(warmth * fertility * water * cover * 100),
+    food: clamp100(food),
     water: clamp100(water * 100),
     energy: clamp100(((wind + solar) / 2) * 100),
     production: clamp100(build * slopeFactor * 100),

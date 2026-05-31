@@ -101,7 +101,7 @@ async function boot(): Promise<void> {
         const c = await sampleClimate(detail.lngLat, inp); // samples the DEM
         return {
           tempC: c.tempC,
-          warmth: growingWarmth(c.meanTempC),
+          warmth: growingWarmth(c.growSeasonTempC),
           precip: c.precip,
           effLat: c.effLat,
           elevationM: c.elevationM,

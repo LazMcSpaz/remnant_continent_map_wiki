@@ -112,6 +112,22 @@ and derives **temperature, precipitation, and prevailing wind** for any point:
 - wind band (trade easterlies / westerlies / polar easterlies) oriented to the
   new axis.
 
+The **map itself opens oriented to the new North Pole** (the new-north direction
+points "up"), not geographic north, so the world reads in its post-shift frame.
+A single bearing can only be exact at one point on a sphere, so it's computed at
+the area-of-interest centre; the compass control resets to true north if wanted.
+
+**Agricultural potential** is deliberately agronomic, not "hotter is better":
+warmth is scored on the **growing-season** temperature (the warm extreme of the
+annual swing, so it doesn't flip when you scrub the season) with an **optimum
+band** (too cold below ~5 °C, a temperate optimum ~20–28 °C, heat stress above),
+and moisture comes from the rules **precipitation** (plus authored
+rivers/irrigation) with a well-watered optimum and a mild waterlogging penalty.
+The upshot: the mild, wet new Midwest (temperate forest) scores as prime
+farmland, while frozen highland and the scorching new tropics do not — the same
+`cropSuitabilityAt` core feeds both a city's food resource and a terrain
+region's crop score, so they never diverge.
+
 It also models the **inundation**: a rapid shift re-forms the equatorial bulge
 around the new equator, so sea level stands higher there — old-Arctic lowlands
 (Hudson Bay) flood into new warm seas while the new polar regions drain. A point

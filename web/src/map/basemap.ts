@@ -7,6 +7,7 @@
 
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import { AOI, readMapConfig, type MapConfig } from "../config";
+import { bearingToPole, DEFAULT_POLE } from "../derived/climate";
 
 /** Build a minimal raster style as a dev fallback when no vector style is set. */
 function rasterStyle(cfg: MapConfig): StyleSpecification {
@@ -49,6 +50,12 @@ export function createBasemap(container: HTMLElement): BasemapHandle {
     minZoom: AOI.minZoom,
     maxZoom: AOI.maxZoom,
     maxBounds: AOI.maxBounds,
+    // Orient "up" toward the NEW North Pole (Peru), not geographic north, so the
+    // map reads in the post-shift frame. Computed at the area-of-interest centre
+    // (a single bearing can only be exact at one point on a sphere). The compass
+    // in the NavigationControl resets to true north if desired; a URL #hash
+    // overrides this on shared links.
+    bearing: bearingToPole(AOI.center, DEFAULT_POLE),
     attributionControl: false,
     hash: "map", // sync view to URL so a location is shareable
   });
