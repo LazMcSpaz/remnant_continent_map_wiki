@@ -60,23 +60,9 @@ growing-degree-days, and suitability scores are derived at runtime.
 
 ## Map extent & layers
 
-The base map **is the fictional world**, not a real basemap. `src/derived/
-world-base.ts` bakes our own model into the substrate over `AOI.climateExtent`:
-**biome** land cover (from the climate rules), the **post-shift coastline**
-(inundation), **rivers** (hydrology), all shaded by a DEM **hillshade** so relief
-reads like a drawn map. The map background is the sea colour, so the world fades
-into open ocean past the baked extent with no hard edge. This avoids the
-"Frankenstein" of real roads/labels fighting the fiction — and the upside-down
-real-world labels that the new-north rotation caused (they were OSM's baked-in
-text). Real OSM is demoted to a **Reference (real map)** layer in the Layers
-panel: toggle it **on** to locate yourself while editing, **off** to see the
-world. It opens oriented to **new-north**, with a header **North: new ⇄ true**
-toggle. The world base is baked once and cached (re-bakes only if the pole/sea
-inputs change).
-
 The map spans **continental North America** (pannable across Canada/US/Mexico)
 and opens zoomed on the Midwest corridor where the seed data lives. A **Layers**
-panel (top-left) toggles each feature group — Reference, Climate zones, Terrain,
+panel (top-left) toggles each feature group — Climate zones, Terrain,
 Territories, Routes, City names — on/off; hiding a layer also makes it
 un-clickable, so you can isolate exactly what you want to select without
 pixel-hunting between overlapping features.

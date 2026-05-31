@@ -15,7 +15,6 @@ import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
-import { WorldBase } from "./derived/world-base";
 import { RiversOverlay } from "./derived/rivers-overlay";
 import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { IsochroneOverlay } from "./derived/isochrone-overlay";
@@ -100,9 +99,6 @@ async function boot(): Promise<void> {
     const panelMount = document.querySelector<HTMLElement>(".map-area")
       ?? document.getElementById("app")
       ?? document.body;
-    // The fictional world IS the base map (substrate), baked from our model.
-    const worldBase = new WorldBase(map, setStatus);
-    void worldBase.build(data);
     // Derived climate overlay (Phase 2): a static raster, baked once on toggle.
     const climate = new ClimateOverlay(map, setStatus);
     climate.recompute(data);
