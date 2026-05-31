@@ -481,6 +481,18 @@ body {
   flex: 1;
 }
 
+/* Crosshair while placing route nodes — beats the canvas inline cursor. */
+.maplibregl-canvas.rc-crosshair {
+  cursor: crosshair !important;
+}
+
+/* A read-only "field" (e.g. the locked Landship travel mode). */
+.terra-fixed {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
 /* Route creation wizard */
 .wizard-card {
   position: absolute;

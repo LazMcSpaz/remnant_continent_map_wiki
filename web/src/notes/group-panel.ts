@@ -14,7 +14,7 @@ import {
 } from "../layers/features";
 import type { Note } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
-import { TRAVEL_MODES, getTravelMode, setTravelMode, formatHours } from "../derived/travel";
+import { TRAVEL_MODES, getTravelMode, setTravelMode, formatHours, formatMiles } from "../derived/travel";
 
 /** A member route, as the panel needs to display it. */
 export interface GroupMemberView {
@@ -116,7 +116,7 @@ export class GroupPanel {
     this.bodyEl.append(
       el("div", { className: "terra-derived" }, [
         el("h3", { className: "terra-section" }, ["Derived (whole corridor)"]),
-        el("div", { className: "terra-derived-row" }, [el("span", {}, [`${agg.lengthKm.toFixed(0)} km`]), el("span", { className: "wiki-muted" }, ["total length"])]),
+        el("div", { className: "terra-derived-row" }, [el("span", {}, [formatMiles(agg.lengthKm)]), el("span", { className: "wiki-muted" }, ["total length"])]),
         el("div", { className: "terra-derived-row" }, [el("span", {}, [formatHours(agg.travelHours)]), el("span", { className: "wiki-muted" }, ["end-to-end travel"])]),
         this.modePicker(),
       ]),

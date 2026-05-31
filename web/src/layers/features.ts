@@ -342,6 +342,14 @@ export async function deleteRouteBreak(id: string): Promise<void> {
   if (error) throw new Error(`delete break failed: ${error.message}`);
 }
 
+/** Assign (or clear) the faction that controls a blockade/toll. */
+export async function setRouteBreakFaction(id: string, factionId: string | null): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — editing is unavailable.");
+  const { error } = await sb.from("route_breaks").update({ faction_id: factionId }).eq("id", id);
+  if (error) throw new Error(`update break failed: ${error.message}`);
+}
+
 // --- Route groups (corridors) -----------------------------------------------
 
 /** Create a corridor and attach the given member routes. Returns the new id. */
@@ -408,7 +416,13 @@ export async function removeRouteGroupMember(groupId: string, routeId: string): 
  *  still go through the RPC; these are plain column updates. */
 export async function updateRouteFields(
   id: string,
-  fields: Partial<{ kind: string; status: string; route_class: string; purpose: string | null }>,
+  fields: Partial<{
+    kind: string;
+    status: string;
+    route_class: string;
+    purpose: string | null;
+    owner_faction_id: string | null;
+  }>,
 ): Promise<void> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — editing is unavailable.");

@@ -76,18 +76,18 @@ pixel-hunting between overlapping features.
   Landship barriers are terrain regions that are forest, high-elevation
   (≥1500 m), or steep (≥15°), so landship routing sharpens as you author more
   terrain. Configure the OSRM server with `VITE_OSRM_URL`.
-- **Click a route** to open its panel: edit class (**major/minor/secret**),
-  status, kind, and purpose; see derived length + **travel time**, which always
-  computes and updates with the chosen **travel mode** (on foot, caravan,
-  mounted, landship, motorized, rail — each with a stylized mph). Read/add/delete
-  notes. Class feeds graph capacity and on-map styling (major thicker, secret
-  fainter). The route click target is widened a few px so thin lines are easy to
-  select.
-- **Breaks** — in a route's panel, choose a kind (**natural / blockade / toll**)
-  and "Place break", then click the spot on the route; the point snaps onto the
-  line. Breaks are **annotations** — markers that record a barrier/toll. They do
-  **not** close the route or stop travel time; lift or delete them as needed.
-  They ride on the Routes layer (no separate toggle).
+- Routes are drawn in the **color of their owning faction** (grey if unaligned).
+- **Click a route** to open its panel: see derived **length (miles)**, **owner**,
+  and **travel time** (always computes) for the chosen **travel mode** — on foot,
+  caravan, mounted, landship, motorized, rail, each with a stylized mph. Edit
+  class, status, kind, **owner faction**, and purpose; or **delete** the route.
+  **Landship** routes are locked to the Landship travel mode. The click target
+  is widened a few px so thin lines are easy to select.
+- **Breaks** — choose a kind (**natural / blockade / toll**) and "Place break",
+  then click the spot on the route; it snaps onto the line. Breaks are
+  **annotations** (they don't close the route or stop travel) and a blockade or
+  toll can be **tagged with the faction** that controls it. Lift or delete them;
+  they ride on the Routes layer.
 - **Corridors (route groups)** — the **Corridors** panel (top-left) lists named
   corridors and has "New corridor": name it, then click route segments to add
   them (Esc to finish). A corridor's panel shows its derived **total length and

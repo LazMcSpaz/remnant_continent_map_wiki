@@ -167,6 +167,7 @@ async function boot(): Promise<void> {
     };
     const routeHost: RouteHost = {
       getRoute: findRoute,
+      factions: () => [...data.factions.values()],
       getBreaks: (routeId) => data.routeBreaks.filter((b) => b.route_id === routeId),
       beginPlaceBreak: (routeId, kind) => {
         placingBreak = true;

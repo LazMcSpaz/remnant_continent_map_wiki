@@ -4,10 +4,25 @@
 // rebuilds the network graph (class/status feed edge speed and passability).
 
 import type { RouteProps } from "../layers/features";
-import { updateRouteFields, loadNotesFor, addNote, deleteNote } from "../layers/features";
-import type { Note, RouteBreakGeo } from "../state/db-types";
+import {
+  updateRouteFields,
+  deleteFeature,
+  setRouteBreakFaction,
+  loadNotesFor,
+  addNote,
+  deleteNote,
+} from "../layers/features";
+import type { Note, RouteBreakGeo, Faction } from "../state/db-types";
 import { renderInlineMarkdown, relativeTime } from "./markdown";
-import { TRAVEL_MODES, getTravelMode, setTravelMode, formatHours } from "../derived/travel";
+import {
+  TRAVEL_MODES,
+  getTravelMode,
+  setTravelMode,
+  travelHours,
+  formatHours,
+  formatMiles,
+  LANDSHIP_MODE,
+} from "../derived/travel";
 
 export interface RouteDetail {
   props: RouteProps;
@@ -18,6 +33,7 @@ export interface RouteDetail {
 export interface RouteHost {
   getRoute(id: string): RouteDetail | undefined;
   getBreaks(routeId: string): RouteBreakGeo[];
+  factions(): Faction[];
   /** Arm placement: the next map click drops a break (kind) on this route. */
   beginPlaceBreak(routeId: string, kind: string): void;
   setBreakActive(id: string, active: boolean): Promise<void>;
@@ -29,7 +45,7 @@ export interface RouteHost {
 
 const CLASSES = ["major", "minor", "secret"];
 const STATUSES = ["intact", "damaged", "destroyed"];
-const KINDS = ["road", "rail", "trail"];
+const KINDS = ["road", "rail", "trail", "landship"];
 const BREAK_KINDS = ["natural", "blockade", "toll"];
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -107,18 +123,22 @@ export class RoutePanel {
       return;
     }
     const p = d.props;
+    const isLandship = p.kind === "landship";
     this.titleEl.textContent = `${p.routeClass} ${p.kind}`;
     this.bodyEl.replaceChildren();
 
-    // Derived readout + travel-mode picker (travel always computes).
-    const len = d.lengthKm == null ? "—" : `${d.lengthKm.toFixed(0)} km`;
-    const travel = d.travelHours == null ? "—" : formatHours(d.travelHours);
+    // Owner + derived readout. Landship routes are locked to the Landship mode.
+    const mode = isLandship ? LANDSHIP_MODE : getTravelMode();
+    const len = d.lengthKm == null ? "—" : formatMiles(d.lengthKm);
+    const travel = d.lengthKm == null ? "—" : formatHours(travelHours(d.lengthKm, p.status, mode));
+    const ownerName = this.factionName(p.ownerFactionId);
     this.bodyEl.append(
       el("div", { className: "terra-derived" }, [
         el("h3", { className: "terra-section" }, ["Derived"]),
         el("div", { className: "terra-derived-row" }, [el("span", {}, [len]), el("span", { className: "wiki-muted" }, ["length"])]),
         el("div", { className: "terra-derived-row" }, [el("span", {}, [travel]), el("span", { className: "wiki-muted" }, ["travel time"])]),
-        this.modePicker(),
+        el("div", { className: "terra-derived-row" }, [el("span", {}, [ownerName]), el("span", { className: "wiki-muted" }, ["owner"])]),
+        this.modePicker(isLandship),
       ]),
     );
 
@@ -127,8 +147,19 @@ export class RoutePanel {
     this.bodyEl.append(this.notesSection(this.currentId));
   }
 
-  /** Travel-mode picker — changing it recomputes the travel time everywhere. */
-  private modePicker(): HTMLElement {
+  private factionName(id: string | null): string {
+    if (!id) return "Unaligned";
+    return this.host.factions().find((f) => f.id === id)?.name ?? "Unaligned";
+  }
+
+  /** Travel-mode picker. Landship routes are fixed to the Landship mode. */
+  private modePicker(isLandship: boolean): HTMLElement {
+    if (isLandship) {
+      return el("label", { className: "terra-field" }, [
+        el("span", { className: "terra-label" }, ["Travel mode"]),
+        el("div", { className: "terra-input terra-fixed" }, [`${LANDSHIP_MODE.label} — ${LANDSHIP_MODE.mph} mph`]),
+      ]);
+    }
     const sel = el("select", { className: "terra-input" });
     const cur = getTravelMode();
     for (const m of TRAVEL_MODES) {
@@ -174,11 +205,24 @@ export class RoutePanel {
               del.disabled = false;
             });
         });
+        // Faction control of the break (who mans the gate / holds the barricade).
+        const fac = this.factionSelect(b.faction_id);
+        fac.title = "Controlled by";
+        fac.addEventListener("change", () => {
+          fac.disabled = true;
+          setRouteBreakFaction(b.id, fac.value || null)
+            .then(() => this.host.reloadData())
+            .then(() => this.refresh())
+            .catch((err: unknown) => {
+              this.host.setStatus(err instanceof Error ? err.message : String(err), "error");
+              fac.disabled = false;
+            });
+        });
         list.append(
           el("div", { className: "break-row" }, [
             toggle,
             el("span", { className: `wiki-tag break-${b.kind}` }, [b.kind]),
-            el("span", { className: "wiki-muted" }, [b.active ? "active" : "lifted"]),
+            fac,
             del,
           ]),
         );
@@ -198,10 +242,25 @@ export class RoutePanel {
     return wrap;
   }
 
+  /** A faction <select> (Unaligned + factions), returns the chosen id or null. */
+  private factionSelect(currentId: string | null) {
+    const sel = el("select", { className: "terra-input" });
+    const none = el("option", { value: "" }, ["Unaligned"]);
+    if (!currentId) none.selected = true;
+    sel.append(none);
+    for (const f of this.host.factions()) {
+      const opt = el("option", { value: f.id }, [f.name]);
+      if (f.id === currentId) opt.selected = true;
+      sel.append(opt);
+    }
+    return sel;
+  }
+
   private editForm(p: RouteProps): HTMLElement {
     const cls = select("Class", p.routeClass, CLASSES);
     const status = select("Status", p.status, STATUSES);
     const kind = select("Kind", p.kind, KINDS);
+    const owner = this.factionSelect(p.ownerFactionId);
     const purpose = el("input", { className: "terra-input", type: "text", value: p.purpose ?? "" });
 
     const save = el("button", { type: "button", className: "wiki-btn" }, ["Save"]);
@@ -211,6 +270,7 @@ export class RoutePanel {
         route_class: cls.sel.value,
         status: status.sel.value,
         kind: kind.sel.value,
+        owner_faction_id: owner.value || null,
         purpose: purpose.value.trim() || null,
       })
         .then(() => this.host.reloadData())
@@ -224,11 +284,21 @@ export class RoutePanel {
         });
     });
 
+    const del = el("button", { type: "button", className: "wiki-btn-ghost" }, ["Delete route"]);
+    del.addEventListener("click", () => {
+      if (!window.confirm("Delete this route? (breaks on it are removed too)")) return;
+      deleteFeature("route", p.id)
+        .then(() => this.host.reloadData())
+        .then(() => this.close())
+        .catch((err: unknown) => this.host.setStatus(err instanceof Error ? err.message : String(err), "error"));
+    });
+
     return el("div", { className: "terra-form" }, [
       el("h3", { className: "terra-section" }, ["Attributes"]),
       cls.row, status.row, kind.row,
+      el("label", { className: "terra-field" }, [el("span", { className: "terra-label" }, ["Owner"]), owner]),
       el("label", { className: "terra-field" }, [el("span", { className: "terra-label" }, ["Purpose"]), purpose]),
-      el("div", { className: "terra-actions" }, [save]),
+      el("div", { className: "terra-actions" }, [save, del]),
     ]);
   }
 
