@@ -16,6 +16,7 @@ import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { RiversOverlay } from "./derived/rivers-overlay";
+import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { SimController } from "./sim/sim-controller";
 import { mountSimControl } from "./sim/sim-control";
 import { mountClimateControl } from "./derived/climate-control";
@@ -102,6 +103,9 @@ async function boot(): Promise<void> {
     rivers.recompute(data);
     // Phase 4 — flow simulation over the network graph.
     const sim = new SimController(map, () => data, () => graph, setStatus);
+    // Phase 4 analysis — chokepoint / centrality detection over the graph.
+    const chokepoints = new ChokepointOverlay(map, setStatus);
+    chokepoints.recompute(graph, data.routes);
 
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
@@ -187,6 +191,11 @@ async function boot(): Promise<void> {
     };
     const routeHost: RouteHost = {
       getRoute: findRoute,
+      getChokepoint: (routeId) => {
+        const a = chokepoints.getAnalysis();
+        const e = a?.edges.find((x) => x.routeId === routeId);
+        return e ? { score: e.score, betweenness: e.betweenness, cutImpact: e.cutImpact } : null;
+      },
       factions: () => [...data.factions.values()],
       getBreaks: (routeId) => data.routeBreaks.filter((b) => b.route_id === routeId),
       beginPlaceBreak: (routeId, kind) => {
@@ -384,6 +393,7 @@ async function boot(): Promise<void> {
       updateFeatureData(map, next);
       climate.recompute(next);
       rivers.recompute(next);
+      chokepoints.recompute(graph, next.routes);
       if (wiki.isOpen()) wiki.rerenderActive();
       if (terrainPanel.isOpen()) terrainPanel.refresh();
       if (routePanel.isOpen()) routePanel.refresh();
@@ -403,7 +413,11 @@ async function boot(): Promise<void> {
 
     // Layers panel: toggle terrain / territories / routes / labels / climate.
     const layersEl = document.getElementById("layers-panel");
-    if (layersEl) mountLayersPanel(layersEl, map, climate, rivers, sim);
+    if (layersEl) {
+      mountLayersPanel(layersEl, map, climate, rivers, sim, (visible) =>
+        chokepoints.setVisible(visible, graph, data.routes),
+      );
+    }
 
     // Flow-simulation control (turn slider, play/step/reset).
     const simEl = document.getElementById("sim-control");

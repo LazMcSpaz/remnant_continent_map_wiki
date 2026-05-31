@@ -30,8 +30,17 @@ export interface RouteDetail {
   travelHours: number | null;
 }
 
+export interface RouteChokepoint {
+  /** 0..1 combined chokepoint score. */
+  score: number;
+  betweenness: number;
+  cutImpact: number;
+}
+
 export interface RouteHost {
   getRoute(id: string): RouteDetail | undefined;
+  /** Network chokepoint analysis for this route, or null if unavailable. */
+  getChokepoint(routeId: string): RouteChokepoint | null;
   getBreaks(routeId: string): RouteBreakGeo[];
   factions(): Faction[];
   /** Arm placement: the next map click drops a break (kind) on this route. */
@@ -132,15 +141,27 @@ export class RoutePanel {
     const len = d.lengthKm == null ? "—" : formatMiles(d.lengthKm);
     const travel = d.lengthKm == null ? "—" : formatHours(travelHours(d.lengthKm, p.status, mode));
     const ownerName = this.factionName(p.ownerFactionId);
-    this.bodyEl.append(
-      el("div", { className: "terra-derived" }, [
-        el("h3", { className: "terra-section" }, ["Derived"]),
-        el("div", { className: "terra-derived-row" }, [el("span", {}, [len]), el("span", { className: "wiki-muted" }, ["length"])]),
-        el("div", { className: "terra-derived-row" }, [el("span", {}, [travel]), el("span", { className: "wiki-muted" }, ["travel time"])]),
-        el("div", { className: "terra-derived-row" }, [el("span", {}, [ownerName]), el("span", { className: "wiki-muted" }, ["owner"])]),
-        this.modePicker(isLandship),
-      ]),
-    );
+    const choke = this.host.getChokepoint(this.currentId);
+    const derivedRows: (Node | string)[] = [
+      el("h3", { className: "terra-section" }, ["Derived"]),
+      el("div", { className: "terra-derived-row" }, [el("span", {}, [len]), el("span", { className: "wiki-muted" }, ["length"])]),
+      el("div", { className: "terra-derived-row" }, [el("span", {}, [travel]), el("span", { className: "wiki-muted" }, ["travel time"])]),
+      el("div", { className: "terra-derived-row" }, [el("span", {}, [ownerName]), el("span", { className: "wiki-muted" }, ["owner"])]),
+    ];
+    if (choke) {
+      const pct = Math.round(choke.score * 100);
+      const label = choke.score >= 0.7 ? "critical chokepoint"
+        : choke.score >= 0.4 ? "chokepoint"
+        : choke.cutImpact >= 0.99 ? "sole link" : "well-connected";
+      derivedRows.push(
+        el("div", { className: "terra-derived-row" }, [
+          el("span", {}, [`${pct} · ${label}`]),
+          el("span", { className: "wiki-muted" }, ["chokepoint"]),
+        ]),
+      );
+    }
+    derivedRows.push(this.modePicker(isLandship));
+    this.bodyEl.append(el("div", { className: "terra-derived" }, derivedRows));
 
     if (this.host.canEdit()) this.bodyEl.append(this.editForm(d.props));
     this.bodyEl.append(this.breaksSection(this.currentId));
