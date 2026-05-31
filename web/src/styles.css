@@ -343,6 +343,15 @@ body {
   border-radius: 4px;
   padding: 0.1rem 0.25rem;
 }
+.faction-color-input {
+  width: 2.2rem;
+  height: 1.3rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+}
 .wiki-conn-pressure {
   display: flex;
   align-items: center;

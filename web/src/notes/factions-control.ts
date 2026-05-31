@@ -26,6 +26,7 @@ export interface FactionsHost {
   /** Current stance between two factions (defaults to "friendly"). */
   relation(a: string, b: string): RelationLevel;
   setTier(id: string, tier: FactionTier): Promise<void>;
+  setColor(id: string, color: string): Promise<void>;
   setRelation(a: string, b: string, level: RelationLevel): Promise<void>;
   canEdit(): boolean;
 }
@@ -115,6 +116,17 @@ export function mountFactionsControl(container: HTMLElement, host: FactionsHost)
           row.className = "faction-rel-row";
           row.append(text("Tier", "faction-rel-pair"), tierSel);
           card.append(row);
+
+          const colorInput = document.createElement("input");
+          colorInput.type = "color";
+          colorInput.className = "faction-color-input";
+          colorInput.value = normalizeHex(f.color);
+          // Commit on change (picker close), not every drag tick.
+          colorInput.addEventListener("change", () => void host.setColor(f.id, colorInput.value));
+          const crow = document.createElement("div");
+          crow.className = "faction-rel-row";
+          crow.append(text("Color", "faction-rel-pair"), colorInput);
+          card.append(crow);
         }
       }
       container.append(card);
@@ -154,6 +166,16 @@ export function mountFactionsControl(container: HTMLElement, host: FactionsHost)
 
   render();
   return { refresh: render };
+}
+
+/** Coerce a stored color to the #rrggbb form <input type=color> requires. */
+function normalizeHex(color: string): string {
+  const c = color.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c;
+  if (/^#[0-9a-fA-F]{3}$/.test(c)) {
+    return "#" + c.slice(1).split("").map((h) => h + h).join("");
+  }
+  return "#888888";
 }
 
 function swatch(color: string): HTMLElement {

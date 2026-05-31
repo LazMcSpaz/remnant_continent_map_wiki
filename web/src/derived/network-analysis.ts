@@ -16,6 +16,7 @@
 
 import type { NetworkGraph, GraphEdge, GraphNode } from "./network-graph";
 import { edgeTravelHours } from "./network-graph";
+import { travelHours, type TravelMode } from "./travel";
 
 export interface EdgeScore {
   edgeId: string;
@@ -212,4 +213,83 @@ function buildAdjacencyExcept(graph: NetworkGraph, excludeId: string): Map<strin
 /** Look up a node by id (for naming an edge's endpoints in the UI). */
 export function nodeName(graph: NetworkGraph, nodeId: string): string {
   return graph.nodes.find((n) => n.id === nodeId)?.name ?? "junction";
+}
+
+// --- Travel-time isochrones -------------------------------------------------
+
+export interface IsochroneNode {
+  nodeId: string;
+  locationId: string | null;
+  name: string;
+  lngLat: [number, number];
+  /** Hours to reach from the origin at the chosen mode (0 at the origin). */
+  hours: number;
+}
+
+export interface IsochroneEdge {
+  routeId: string;
+  /** Max hours of the two endpoints — the band the edge belongs to. */
+  hours: number;
+}
+
+export interface Isochrones {
+  originNodeId: string;
+  mode: TravelMode;
+  /** Reachable nodes with their time-to-reach (origin included at 0 h). */
+  nodes: IsochroneNode[];
+  /** Edges on the reachable network, tagged by band for coloring. */
+  edges: IsochroneEdge[];
+  /** Reachable nodes that are real cities (for a ranked list), nearest first. */
+  cities: IsochroneNode[];
+}
+
+/** Adjacency with edge cost = travel hours at an explicit mode (not the global). */
+function buildAdjacencyAtMode(graph: NetworkGraph, mode: TravelMode): Map<string, Adj[]> {
+  const adj = new Map<string, Adj[]>();
+  const add = (a: string, b: string, e: GraphEdge, cost: number) => {
+    if (!adj.has(a)) adj.set(a, []);
+    adj.get(a)!.push({ edgeId: e.id, to: b, cost });
+  };
+  for (const e of graph.edges) {
+    if (e.status === "destroyed") continue;
+    const cost = Math.max(0.001, travelHours(e.lengthKm, e.status, mode));
+    add(e.from, e.to, e, cost);
+    add(e.to, e.from, e, cost);
+  }
+  return adj;
+}
+
+/**
+ * Travel-time isochrones from an origin node at a given mode: shortest-time to
+ * every reachable node (Dijkstra), so the UI can band the map by hours. Pure.
+ */
+export function computeIsochrones(
+  graph: NetworkGraph,
+  originNodeId: string,
+  mode: TravelMode,
+): Isochrones {
+  const adj = buildAdjacencyAtMode(graph, mode);
+  const { dist } = dijkstra(originNodeId, adj);
+
+  const nodes: IsochroneNode[] = [];
+  for (const n of graph.nodes) {
+    const h = dist.get(n.id);
+    if (h == null || !isFinite(h)) continue; // unreachable from the origin
+    nodes.push({ nodeId: n.id, locationId: n.locationId, name: n.name, lngLat: n.lngLat, hours: h });
+  }
+  const reachable = new Set(nodes.map((n) => n.nodeId));
+
+  const edges: IsochroneEdge[] = [];
+  for (const e of graph.edges) {
+    if (e.status === "destroyed") continue;
+    if (!reachable.has(e.from) || !reachable.has(e.to)) continue;
+    const hours = Math.max(dist.get(e.from) ?? 0, dist.get(e.to) ?? 0);
+    edges.push({ routeId: e.routeId, hours });
+  }
+
+  const cities = nodes
+    .filter((n) => n.locationId != null)
+    .sort((a, b) => a.hours - b.hours);
+
+  return { originNodeId, mode, nodes, edges, cities };
 }
