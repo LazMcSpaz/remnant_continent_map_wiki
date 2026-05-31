@@ -27,6 +27,7 @@ export function mountLayersPanel(
   container: HTMLElement,
   map: MlMap,
   climate: ClimateOverlay,
+  rivers: RiversOverlay,
 ): void {
   container.replaceChildren();
   const heading = document.createElement("h2");
@@ -51,6 +52,7 @@ export function mountLayersPanel(
     cb.addEventListener("change", () => {
       if (row.id === "climate") climate.setVisible(cb.checked);
       else if (row.id === "water") climate.setWaterVisible(cb.checked);
+      else if (row.id === "rivers") rivers.setVisible(cb.checked);
       else setGroupVisible(map, row.id, cb.checked);
     });
 

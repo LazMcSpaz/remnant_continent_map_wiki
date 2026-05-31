@@ -98,6 +98,27 @@ The whole route system — segments, classes, breaks, and corridors — is inclu
 in Save / Export and restored on Import (ids remapped, breaks re-snapped onto
 their routes, corridor membership rebuilt).
 
+## Hydrology (DEM flow accumulation)
+
+Rivers aren't authored either — they fall out of the terrain. `src/derived/
+hydrology.ts` samples the DEM over the climate extent and runs real drainage:
+
+1. **fill depressions** (priority-flood) so every land cell has a downhill path
+   to an outlet — the post-shift sea (cells below the shifted sea level) or the
+   grid edge;
+2. take the **drainage tree** the flood traversal defines (each cell's receiver
+   is the cell it was first reached from — always downhill, flats resolved);
+3. **accumulate flow downstream weighted by rainfall** (from the climate rules),
+   so a river's strength is the rain gathered upstream — big rivers form in wet
+   basins, arid drainages stay thin.
+
+Because rivers drain to the *post-shift* sea and are fed by the *shifted*
+rainfall, the network reflects the new world, not the old. The **Rivers** layer
+(Layers panel) shows it as a soft drainage raster, and the result feeds the
+city **water** resource and crop **irrigation** (a city on a strong channel can
+farm a drier climate — the Nile effect). Computed once and cached, keyed on the
+pole + sea level (season-independent).
+
 ## Rule-based climate (Phase 2)
 
 Climate is **computed by rules**, not authored as polygons. `src/derived/climate.ts`

@@ -17,6 +17,7 @@ import type { LandCover } from "../state/db-types";
 import type { ClimateInputs } from "./climate";
 import { cropSuitabilityAt } from "./climate";
 import { sampleClimate, type SampledClimate } from "./climate-sample";
+import { getHydrology } from "./hydrology";
 
 export const RESOURCE_KINDS = ["food", "water", "energy", "production"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
@@ -99,7 +100,9 @@ export async function deriveCityResources(
   inp: ClimateInputs,
 ): Promise<CityResources> {
   const sc = await sampleClimate(lngLat, inp);
-  const baseline = baselinesFor(lngLat, sc, inp);
+  const hydro = await getHydrology(inp);
+  const river = hydro.waterAt(lngLat[0], lngLat[1]); // 0..100 nearby river strength
+  const baseline = baselinesFor(lngLat, sc, river, inp);
 
   const values = {} as Record<ResourceKind, ResourceValue>;
   for (const kind of RESOURCE_KINDS) {
@@ -120,6 +123,7 @@ export async function deriveCityResources(
 function baselinesFor(
   lngLat: [number, number],
   sc: SampledClimate,
+  river: number,
   inp: ClimateInputs,
 ): Record<ResourceKind, number> {
   const elev = sc.elevationM ?? 0;
@@ -127,8 +131,11 @@ function baselinesFor(
   const landCover = BIOME_LAND_COVER[biome] ?? "grassland";
   const fertility = BIOME_FERTILITY[biome] ?? 50;
 
-  // Surface water available to crops: rainfall + coastal/lake proximity.
-  const surfaceWater = sc.isWater ? 100 : clamp100(sc.precip * 0.7 + sc.maritime * 60);
+  // Surface water available to crops: rainfall + a nearby river (irrigation) +
+  // coastal/lake proximity. A river lets a dry region farm (the Nile effect).
+  const surfaceWater = sc.isWater
+    ? 100
+    : clamp100(sc.precip * 0.55 + river * 0.7 + sc.maritime * 45);
 
   // Food via the shared crop core, at the city's own coordinates, using the
   // model-derived soil/cover/water and the same sampled precipitation.
@@ -140,8 +147,10 @@ function baselinesFor(
         inp,
       ).suitability;
 
-  // Water resource: rainfall + proximity; everything floods to 100 when submerged.
-  const water = sc.isWater ? 100 : clamp100(sc.precip * 0.65 + sc.maritime * 55);
+  // Water resource: rainfall + rivers + coastal proximity; 100 when submerged.
+  const water = sc.isWater
+    ? 100
+    : clamp100(sc.precip * 0.5 + river * 0.75 + sc.maritime * 45);
 
   // Energy: solar insolation (peaks at the new equator, dimmed by cloud/rain) +
   // wind (by prevailing band, stronger on coasts and at elevation).
