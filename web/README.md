@@ -127,16 +127,18 @@ sits temperate in between. A clicked city's **Climate tab** shows biome,
 temperature, precipitation, growing warmth, effective latitude, sampled
 elevation, and prevailing wind.
 
-The **full-map overlay** makes the field visible across the whole map. The
-**Climate zones** layer (Layers panel) paints a rules-based **sampled grid** —
-at each cell we sample the real DEM and run the rules — switchable in the
-**Climate** control between **Temp / Rain / Biome**. A separate, independently
-toggleable **Sea level (flooded)** layer shades every cell that sits below the
-post-shift sea level, so the new coastline reads at a glance instead of being
-inferred city by city. Both come from one sampling pass that resamples on
-pan/zoom (debounced) and samples the DEM at a coarser zoom when zoomed out, so a
-continental view touches a handful of tiles, not hundreds — and nothing is
-sampled until you turn a layer on.
+The **full-map overlay** makes the field visible across the whole map as a
+**static raster**, computed once over a fixed extent (`AOI.climateExtent`) and
+cached — it never recomputes on pan/zoom. We load the DEM for the extent once,
+run the rules at every raster pixel, and bake the result into image layers shown
+with linear resampling, so coastlines and zone boundaries are **smoothly
+interpolated** rather than blocky. The **Climate zones** layer (Layers panel) is
+switchable in the **Climate** control between **Temp / Rain / Biome**, with a
+**legend** that explains the active metric. A separate, independently toggleable
+**Sea level (flooded)** layer shades everything below the post-shift sea level,
+so the new coastline reads at a glance. Nothing is sampled until you turn a layer
+on; switching the metric just re-paints from the stored field, and a season
+scrub re-bakes from the cached DEM block (no re-fetch).
 
 ## Terrain editor (cascade in action)
 

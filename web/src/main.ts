@@ -88,8 +88,8 @@ async function boot(): Promise<void> {
     const panelMount = document.querySelector<HTMLElement>(".map-area")
       ?? document.getElementById("app")
       ?? document.body;
-    // Derived climate overlay (Phase 2): recomputes from authored inputs.
-    const climate = new ClimateOverlay(map);
+    // Derived climate overlay (Phase 2): a static raster, baked once on toggle.
+    const climate = new ClimateOverlay(map, setStatus);
     climate.recompute(data);
 
     const host: WikiHost = {
@@ -418,7 +418,7 @@ function mountClimate(
   const initial = getData().worldSettings?.season ?? 0;
   mountClimateControl(container, initial, {
     canEdit: hasBackend(),
-    onMetric: (metric) => climate.setMetric(metric, getData()),
+    onMetric: (metric) => climate.setMetric(metric),
     // Live preview: mutate the in-memory season input and recompute the derived
     // field — no DB round-trip, so scrubbing is smooth. This is the cascade in
     // action: change an authored input, the derived layer recomputes instantly.

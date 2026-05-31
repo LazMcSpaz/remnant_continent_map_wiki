@@ -230,6 +230,23 @@ export function seaLevelAt(point: [number, number], inp: ClimateInputs): number 
   return inp.seaLevelM + SEA_BULGE_M * Math.sin(d * DEG2RAD) ** 2;
 }
 
+/**
+ * Canonical biome palette — the legend, and the stable id→colour mapping the
+ * raster overlay indexes into (so the map and the legend never drift apart).
+ * The water colour matches the sea-level overlay.
+ */
+export const BIOME_LEGEND: Biome[] = [
+  { id: "water", label: "Sea / lake", color: "#1f5d8c" },
+  { id: "ice", label: "Ice / polar desert", color: "#dfe9f0" },
+  { id: "tundra", label: "Tundra", color: "#9aa7a0" },
+  { id: "desert", label: "Desert", color: "#d8b15f" },
+  { id: "grassland", label: "Grassland / prairie", color: "#9bab57" },
+  { id: "woodland", label: "Woodland / steppe", color: "#6f8f4a" },
+  { id: "forest", label: "Temperate forest", color: "#2f6b3f" },
+  { id: "savanna", label: "Savanna", color: "#b7a84a" },
+  { id: "rainforest", label: "Tropical rainforest", color: "#1f7a3a" },
+];
+
 /** Whittaker-style biome from mean annual temperature + precipitation. */
 export function biomeAt(meanTempC: number, precip: number, isWater: boolean): Biome {
   if (isWater) return { id: "water", label: "Sea / lake", color: "#2b5d8a" };

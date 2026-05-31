@@ -1,23 +1,23 @@
 // Full-map climate overlay (DERIVED, Phase 2).
 //
-// Replaces the old terrain-polygon choropleth with a rules-based **sampled
-// grid**: over the current viewport we lay down a grid of cells, sample the
-// real DEM elevation at each cell centre, and run the climate rules
-// (climate.ts) to get temperature / precipitation / biome — plus whether the
-// cell sits below the post-shift sea level (inundation). One sampling pass
-// feeds two independently-toggleable layers:
+// A **static raster**. Over a fixed extent (config AOI.climateExtent) we sample
+// the real DEM once into an in-memory block, run the climate rules at every
+// raster pixel, and bake the result into canvases:
 //
-//   • the **climate** fill — coloured by the chosen metric (temp / rain / biome)
-//   • the **sea level** fill — the flooded cells, so the new coastline reads at
-//     a glance instead of having to be inferred city by city
+//   • a **climate** raster — temperature / rain / biome (switchable)
+//   • a **sea-level** raster — the flooded cells (below the post-shift sea level)
 //
-// The grid resamples on pan/zoom (debounced) and samples at a coarser DEM zoom
-// when zoomed out, so a continental view touches a handful of tiles, not
-// hundreds. Holds no authored data; it paints recomputed values only. The
-// per-region derived map (for the terrain panel) is kept alongside.
+// Each is shown through a MapLibre `image` source + `raster` layer with linear
+// resampling, so the GPU interpolates between pixels: soft coastlines and zone
+// boundaries instead of blocky rectangles. Computed **once** (lazily, on first
+// toggle-on) and cached — toggling is just a visibility flip, switching the
+// metric just re-paints from the stored field (no resampling), and a season
+// scrub re-bakes from the cached DEM block (no re-fetch). It never recomputes
+// on pan/zoom. Holds no authored data; the per-region derived map (for the
+// terrain panel) is kept alongside.
 
-import type { Map as MlMap, GeoJSONSource, ExpressionSpecification } from "maplibre-gl";
-import type { FeatureCollection, Polygon } from "geojson";
+import type { Map as MlMap, ImageSource } from "maplibre-gl";
+import { AOI } from "../config";
 import type { FeatureData } from "../layers/features";
 import {
   deriveClimate,
@@ -26,191 +26,296 @@ import {
   temperatureAt,
   seaLevelAt,
   biomeAt,
+  BIOME_LEGEND,
   type ClimateInputs,
   type GridMetric,
   type RegionDerived,
 } from "./climate";
-import { sampleElevation } from "./elevation";
+import { loadDemBlock, elevationFromBlock, type DemBlock } from "./elevation";
 
 const SRC = "rc-climate";
 const FILL = "rc-climate-fill";
+const WATER_SRC = "rc-water";
 const WATER = "rc-water-fill";
 
-interface CellProps {
-  temp: number; // °C (current season), drives the temperature ramp
-  precip: number; // 0..100, drives the rain ramp
-  biomeColor: string; // precomputed biome colour (categorical)
-  water: number; // 1 if below post-shift sea level, else 0
+// Raster resolution. The GPU upsamples this with linear filtering, so a moderate
+// grid renders smoothly at any zoom; this many pixels keeps the bake quick.
+const RASTER_W = 768;
+
+type RGB = [number, number, number];
+
+interface RampStop {
+  v: number;
+  c: RGB;
 }
 
-/** Blue→red ramp for temperature (°C, ~ -30..40). */
-function tempColor(): ExpressionSpecification {
-  return [
-    "interpolate", ["linear"], ["get", "temp"],
-    -30, "#3b4cc0",
-    -10, "#7aa0ff",
-    0, "#b9d0ff",
-    10, "#ffe9b0",
-    20, "#ffb24a",
-    30, "#e85d3a",
-    40, "#a01010",
-  ];
+/** Legend/ramp metadata, shared by the canvas painter and the legend UI. */
+export interface RampLegend {
+  title: string;
+  unit: string;
+  stops: Array<{ v: number; color: string }>;
 }
 
-/** Tan→green→teal ramp for precipitation (0..100). */
-function precipColor(): ExpressionSpecification {
-  return [
-    "interpolate", ["linear"], ["get", "precip"],
-    0, "#c9a96a",
-    20, "#d8c98a",
-    40, "#a9c97a",
-    60, "#5fae6b",
-    80, "#2f8b6b",
-    100, "#1f6f8b",
-  ];
+const TEMP_STOPS: RampStop[] = [
+  { v: -30, c: [59, 76, 192] },
+  { v: -10, c: [122, 160, 255] },
+  { v: 0, c: [185, 208, 255] },
+  { v: 10, c: [255, 233, 176] },
+  { v: 20, c: [255, 178, 74] },
+  { v: 30, c: [232, 93, 58] },
+  { v: 40, c: [160, 16, 16] },
+];
+
+const PRECIP_STOPS: RampStop[] = [
+  { v: 0, c: [201, 169, 106] },
+  { v: 20, c: [216, 201, 138] },
+  { v: 40, c: [169, 201, 122] },
+  { v: 60, c: [95, 174, 107] },
+  { v: 80, c: [47, 139, 107] },
+  { v: 100, c: [31, 111, 139] },
+];
+
+function hex(c: RGB): string {
+  return "#" + c.map((n) => Math.round(n).toString(16).padStart(2, "0")).join("");
 }
 
-/** Number of grid columns/rows for the current container size (bounded). */
-function gridDims(map: MlMap): { cols: number; rows: number } {
-  const c = map.getContainer();
-  const w = c.clientWidth || 1000;
-  const h = c.clientHeight || 700;
-  const cols = Math.max(20, Math.min(56, Math.round(w / 26)));
-  const rows = Math.max(16, Math.min(44, Math.round(h / 26)));
-  return { cols, rows };
+export const TEMP_LEGEND: RampLegend = {
+  title: "Temperature",
+  unit: "°C",
+  stops: TEMP_STOPS.map((s) => ({ v: s.v, color: hex(s.c) })),
+};
+export const PRECIP_LEGEND: RampLegend = {
+  title: "Precipitation",
+  unit: "",
+  stops: PRECIP_STOPS.map((s) => ({ v: s.v, color: hex(s.c) })),
+};
+
+/** Interpolate an RGB colour from value-keyed ramp stops. */
+function ramp(value: number, stops: RampStop[]): RGB {
+  if (value <= stops[0].v) return stops[0].c;
+  const last = stops[stops.length - 1];
+  if (value >= last.v) return last.c;
+  for (let i = 1; i < stops.length; i++) {
+    if (value <= stops[i].v) {
+      const a = stops[i - 1];
+      const b = stops[i];
+      const t = (value - a.v) / (b.v - a.v);
+      return [
+        a.c[0] + (b.c[0] - a.c[0]) * t,
+        a.c[1] + (b.c[1] - a.c[1]) * t,
+        a.c[2] + (b.c[2] - a.c[2]) * t,
+      ];
+    }
+  }
+  return last.c;
 }
 
-/** DEM tile zoom for the grid: coarse when zoomed out, fine when zoomed in. */
-function demZoomFor(map: MlMap): number {
-  return Math.max(3, Math.min(8, Math.round(map.getZoom())));
+/** id → index/RGB for biomes, so a Uint8 field can carry biome per pixel. */
+const BIOME_IDX = new Map(BIOME_LEGEND.map((b, i) => [b.id, i]));
+const BIOME_RGB: RGB[] = BIOME_LEGEND.map((b) => {
+  const n = parseInt(b.color.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+});
+
+interface Field {
+  w: number;
+  h: number;
+  temp: Float32Array;
+  precip: Uint8Array;
+  biome: Uint8Array;
+  water: Uint8Array;
 }
+
+type StatusFn = (msg: string, kind?: "info" | "error") => void;
 
 export class ClimateOverlay {
   private map: MlMap;
+  private onStatus: StatusFn;
   private metric: GridMetric = "temperature";
-  private visible = false; // climate fill
-  private waterVisible = false; // sea-level fill
+  private visible = false;
+  private waterVisible = false;
   private added = false;
   private inp: ClimateInputs;
   private derived: Map<string, RegionDerived> = new Map();
-  private token = 0; // cancels stale async grid builds
-  private moveTimer: number | undefined;
+  private block: DemBlock | null = null;
+  private field: Field | null = null;
+  private baking: Promise<void> | null = null;
+  private rebakeTimer: number | undefined;
+  private coords: [[number, number], [number, number], [number, number], [number, number]];
 
-  constructor(map: MlMap) {
+  constructor(map: MlMap, onStatus: StatusFn = () => {}) {
     this.map = map;
+    this.onStatus = onStatus;
     this.inp = climateInputs(null);
-    this.map.on("moveend", () => this.onMove());
+    const [w, s, e, n] = AOI.climateExtent;
+    this.coords = [[w, n], [e, n], [e, s], [w, s]];
   }
 
-  /** Recompute from current authored inputs: per-region derived + resample grid. */
+  /** New authored inputs: refresh per-region derived; re-bake the field if the
+   *  overlay is already built (cheap — reuses the cached DEM block). */
   recompute(data: FeatureData): void {
     this.inp = climateInputs(data.worldSettings);
     this.derived = deriveClimate(data.terrainRegions, data.worldSettings);
-    void this.buildGrid();
+    if (this.field && this.block) {
+      // Debounce: a season scrub fires this on every tick, but re-baking the
+      // whole raster is heavy. Coalesce rapid calls into one repaint.
+      window.clearTimeout(this.rebakeTimer);
+      this.rebakeTimer = window.setTimeout(() => {
+        if (this.block) {
+          this.sampleField(this.block);
+          this.repaint();
+        }
+      }, 120);
+    }
   }
 
-  private onMove(): void {
-    if (!this.visible && !this.waterVisible) return;
-    window.clearTimeout(this.moveTimer);
-    this.moveTimer = window.setTimeout(() => void this.buildGrid(), 250);
-  }
-
-  /** Sample the grid over the current viewport and repaint both fills. */
-  private async buildGrid(): Promise<void> {
-    if (!this.visible && !this.waterVisible) return;
-    const token = ++this.token;
-    const b = this.map.getBounds();
-    const w = b.getWest();
-    const s = b.getSouth();
-    const e = b.getEast();
-    const n = b.getNorth();
-    const { cols, rows } = gridDims(this.map);
-    const dx = (e - w) / cols;
-    const dy = (n - s) / rows;
-    const z = demZoomFor(this.map);
+  /** Sample the climate field across the raster from a loaded DEM block. */
+  private sampleField(block: DemBlock): void {
+    const [w, s, e, n] = AOI.climateExtent;
+    const aspect = (n - s) / (e - w);
+    const W = RASTER_W;
+    const H = Math.max(1, Math.round(W * aspect));
+    const temp = new Float32Array(W * H);
+    const precip = new Uint8Array(W * H);
+    const biome = new Uint8Array(W * H);
+    const water = new Uint8Array(W * H);
     const inp = this.inp;
-
-    const features = await Promise.all(
-      Array.from({ length: cols * rows }, async (_unused, k) => {
-        const i = k % cols;
-        const j = Math.floor(k / cols);
-        const x0 = w + i * dx;
-        const y0 = s + j * dy;
-        const cx = x0 + dx / 2;
-        const cy = y0 + dy / 2;
-        const elev = (await sampleElevation(cx, cy, z)) ?? 0;
-        const sea = seaLevelAt([cx, cy], inp);
+    for (let j = 0; j < H; j++) {
+      // Top row = north. Sample at pixel centres.
+      const lat = n - ((j + 0.5) / H) * (n - s);
+      for (let i = 0; i < W; i++) {
+        const lng = w + ((i + 0.5) / W) * (e - w);
+        const elev = elevationFromBlock(block, lng, lat) ?? 0;
+        const sea = seaLevelAt([lng, lat], inp);
         const isWater = elev <= sea;
         const maritime = isWater ? 1 : 0;
-        const c = climateAt([cx, cy], elev, inp, { maritime, isWater });
-        const meanT = temperatureAt([cx, cy], elev, { ...inp, season: 0.25 }, maritime);
-        const biome = biomeAt(meanT, c.precip, isWater);
-        const props: CellProps = {
-          temp: Math.round(c.tempC),
-          precip: c.precip,
-          biomeColor: biome.color,
-          water: isWater ? 1 : 0,
-        };
-        const geometry: Polygon = {
-          type: "Polygon",
-          coordinates: [[
-            [x0, y0], [x0 + dx, y0], [x0 + dx, y0 + dy], [x0, y0 + dy], [x0, y0],
-          ]],
-        };
-        return { type: "Feature" as const, geometry, properties: props };
-      }),
-    );
-
-    if (token !== this.token) return; // a newer build superseded this one
-    const fc: FeatureCollection<Polygon, CellProps> = { type: "FeatureCollection", features };
-    const src = this.map.getSource(SRC) as GeoJSONSource | undefined;
-    if (src) src.setData(fc);
-    else this.add(fc);
-    this.applyColor();
+        const c = climateAt([lng, lat], elev, inp, { maritime, isWater });
+        const meanT = temperatureAt([lng, lat], elev, { ...inp, season: 0.25 }, maritime);
+        const b = biomeAt(meanT, c.precip, isWater);
+        const k = j * W + i;
+        temp[k] = c.tempC;
+        precip[k] = c.precip;
+        biome[k] = BIOME_IDX.get(b.id) ?? 0;
+        water[k] = isWater ? 1 : 0;
+      }
+    }
+    this.field = { w: W, h: H, temp, precip, biome, water };
   }
 
-  private add(fc: FeatureCollection<Polygon, CellProps>): void {
-    this.map.addSource(SRC, { type: "geojson", data: fc });
-    // Beneath the location markers so cities stay clickable on top.
+  /** Paint the climate canvas for the active metric → a data URL. */
+  private climateDataUrl(): string {
+    const f = this.field!;
+    const cv = document.createElement("canvas");
+    cv.width = f.w;
+    cv.height = f.h;
+    const ctx = cv.getContext("2d")!;
+    const img = ctx.createImageData(f.w, f.h);
+    const d = img.data;
+    for (let k = 0; k < f.w * f.h; k++) {
+      let rgb: RGB;
+      if (this.metric === "temperature") rgb = ramp(f.temp[k], TEMP_STOPS);
+      else if (this.metric === "precip") rgb = ramp(f.precip[k], PRECIP_STOPS);
+      else rgb = BIOME_RGB[f.biome[k]];
+      const o = k * 4;
+      d[o] = rgb[0];
+      d[o + 1] = rgb[1];
+      d[o + 2] = rgb[2];
+      d[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return cv.toDataURL("image/png");
+  }
+
+  /** Paint the sea-level canvas (only flooded pixels are opaque) → data URL. */
+  private waterDataUrl(): string {
+    const f = this.field!;
+    const cv = document.createElement("canvas");
+    cv.width = f.w;
+    cv.height = f.h;
+    const ctx = cv.getContext("2d")!;
+    const img = ctx.createImageData(f.w, f.h);
+    const d = img.data;
+    const [wr, wg, wb] = BIOME_RGB[BIOME_IDX.get("water")!];
+    for (let k = 0; k < f.w * f.h; k++) {
+      const o = k * 4;
+      if (f.water[k]) {
+        d[o] = wr;
+        d[o + 1] = wg;
+        d[o + 2] = wb;
+        d[o + 3] = 255;
+      } else {
+        d[o + 3] = 0;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return cv.toDataURL("image/png");
+  }
+
+  /** Re-push both rasters into their image sources (after a re-bake/metric). */
+  private repaint(): void {
+    if (!this.added || !this.field) return;
+    (this.map.getSource(SRC) as ImageSource | undefined)?.updateImage({ url: this.climateDataUrl() });
+    (this.map.getSource(WATER_SRC) as ImageSource | undefined)?.updateImage({ url: this.waterDataUrl() });
+  }
+
+  /** Build the field + layers once (lazily). Subsequent calls are no-ops. */
+  private async ensureBuilt(): Promise<void> {
+    if (this.field && this.added) return;
+    if (this.baking) return this.baking;
+    this.baking = (async () => {
+      const [w, s, e, n] = AOI.climateExtent;
+      this.onStatus("Computing climate field (sampling elevation)…");
+      try {
+        if (!this.block) this.block = await loadDemBlock(w, s, e, n);
+        this.sampleField(this.block);
+        this.add();
+        this.onStatus("Climate field ready.");
+      } catch (err) {
+        this.onStatus(err instanceof Error ? err.message : String(err), "error");
+      } finally {
+        this.baking = null;
+      }
+    })();
+    return this.baking;
+  }
+
+  private add(): void {
     const before = this.map.getLayer("rc-location-circle") ? "rc-location-circle" : undefined;
-    this.map.addLayer(
-      {
-        id: FILL,
-        type: "fill",
-        source: SRC,
-        layout: { visibility: this.visible ? "visible" : "none" },
-        paint: { "fill-opacity": 0.5, "fill-antialias": false },
-      },
-      before,
-    );
-    // Sea level sits above the climate fill (so flooding reads clearly) but
-    // still below the markers. Only the inundated cells draw.
-    this.map.addLayer(
-      {
-        id: WATER,
-        type: "fill",
-        source: SRC,
-        filter: ["==", ["get", "water"], 1],
-        layout: { visibility: this.waterVisible ? "visible" : "none" },
-        paint: { "fill-color": "#1f5d8c", "fill-opacity": 0.62, "fill-antialias": false },
-      },
-      before,
-    );
+    if (!this.map.getSource(SRC)) {
+      this.map.addSource(SRC, { type: "image", url: this.climateDataUrl(), coordinates: this.coords });
+      this.map.addLayer(
+        {
+          id: FILL,
+          type: "raster",
+          source: SRC,
+          layout: { visibility: this.visible ? "visible" : "none" },
+          paint: { "raster-opacity": 0.6, "raster-resampling": "linear", "raster-fade-duration": 0 },
+        },
+        before,
+      );
+    }
+    if (!this.map.getSource(WATER_SRC)) {
+      this.map.addSource(WATER_SRC, { type: "image", url: this.waterDataUrl(), coordinates: this.coords });
+      // Sea level above the climate fill (so flooding reads), below markers.
+      this.map.addLayer(
+        {
+          id: WATER,
+          type: "raster",
+          source: WATER_SRC,
+          layout: { visibility: this.waterVisible ? "visible" : "none" },
+          paint: { "raster-opacity": 0.66, "raster-resampling": "linear", "raster-fade-duration": 0 },
+        },
+        before,
+      );
+    }
     this.added = true;
   }
 
-  private applyColor(): void {
-    if (!this.added) return;
-    const ramp =
-      this.metric === "temperature" ? tempColor()
-      : this.metric === "precip" ? precipColor()
-      : (["get", "biomeColor"] as ExpressionSpecification);
-    this.map.setPaintProperty(FILL, "fill-color", ramp);
-  }
-
-  setMetric(metric: GridMetric, _data?: FeatureData): void {
+  setMetric(metric: GridMetric): void {
     this.metric = metric;
-    this.applyColor();
+    if (this.added && this.field) {
+      (this.map.getSource(SRC) as ImageSource | undefined)?.updateImage({ url: this.climateDataUrl() });
+    }
   }
 
   getMetric(): GridMetric {
@@ -219,25 +324,19 @@ export class ClimateOverlay {
 
   setVisible(visible: boolean): void {
     this.visible = visible;
-    if (visible && !this.added) {
-      void this.buildGrid();
-    } else if (this.added) {
-      this.map.setLayoutProperty(FILL, "visibility", visible ? "visible" : "none");
-    }
+    if (visible && !this.added) void this.ensureBuilt();
+    else if (this.added) this.map.setLayoutProperty(FILL, "visibility", visible ? "visible" : "none");
   }
 
   isVisible(): boolean {
     return this.visible;
   }
 
-  /** Toggle the sea-level (inundation) fill independently of the climate fill. */
+  /** Toggle the sea-level (inundation) raster independently of the climate one. */
   setWaterVisible(visible: boolean): void {
     this.waterVisible = visible;
-    if (visible && !this.added) {
-      void this.buildGrid();
-    } else if (this.added) {
-      this.map.setLayoutProperty(WATER, "visibility", visible ? "visible" : "none");
-    }
+    if (visible && !this.added) void this.ensureBuilt();
+    else if (this.added) this.map.setLayoutProperty(WATER, "visibility", visible ? "visible" : "none");
   }
 
   isWaterVisible(): boolean {

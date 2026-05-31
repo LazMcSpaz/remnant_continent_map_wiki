@@ -5,6 +5,51 @@
 // made tangible.
 
 import type { GridMetric } from "./climate";
+import { BIOME_LEGEND } from "./climate";
+import { TEMP_LEGEND, PRECIP_LEGEND, type RampLegend } from "./climate-overlay";
+
+/** A horizontal gradient swatch with end (and mid) value labels. */
+function rampLegend(spec: RampLegend): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "legend-ramp";
+  const min = spec.stops[0].v;
+  const max = spec.stops[spec.stops.length - 1].v;
+  const bar = document.createElement("div");
+  bar.className = "legend-bar";
+  const segs = spec.stops
+    .map((s) => `${s.color} ${Math.round(((s.v - min) / (max - min)) * 100)}%`)
+    .join(", ");
+  bar.style.background = `linear-gradient(to right, ${segs})`;
+  const scale = document.createElement("div");
+  scale.className = "legend-scale";
+  const lo = document.createElement("span");
+  lo.textContent = `${min}${spec.unit}`;
+  const mid = document.createElement("span");
+  mid.textContent = `${Math.round((min + max) / 2)}${spec.unit}`;
+  const hi = document.createElement("span");
+  hi.textContent = `${max}${spec.unit}`;
+  scale.append(lo, mid, hi);
+  wrap.append(bar, scale);
+  return wrap;
+}
+
+/** A vertical list of colour swatches + labels (for the categorical biome key). */
+function swatchList(items: Array<{ label: string; color: string }>): HTMLElement {
+  const list = document.createElement("div");
+  list.className = "legend-list";
+  for (const it of items) {
+    const row = document.createElement("div");
+    row.className = "legend-row";
+    const sw = document.createElement("span");
+    sw.className = "legend-swatch";
+    sw.style.background = it.color;
+    const txt = document.createElement("span");
+    txt.textContent = it.label;
+    row.append(sw, txt);
+    list.append(row);
+  }
+  return list;
+}
 
 export interface ClimateControlHandlers {
   onMetric: (metric: GridMetric) => void;
@@ -50,6 +95,21 @@ export function mountClimateControl(
   ];
   let activeMetric: GridMetric = "temperature";
   const metricBtns = new Map<GridMetric, HTMLButtonElement>();
+
+  // Legend — explains how to read the active metric, plus the sea-level key.
+  const legend = document.createElement("div");
+  legend.className = "climate-legend";
+  const renderLegend = (metric: GridMetric): void => {
+    legend.replaceChildren();
+    if (metric === "temperature") legend.append(rampLegend(TEMP_LEGEND));
+    else if (metric === "precip") legend.append(rampLegend(PRECIP_LEGEND));
+    else legend.append(swatchList(BIOME_LEGEND.map((b) => ({ label: b.label, color: b.color }))));
+    // Sea-level key (its own toggleable layer in the Layers panel).
+    legend.append(
+      swatchList([{ label: "Sea level — flooded", color: "#1f5d8c" }]),
+    );
+  };
+
   for (const [metric, label] of metrics) {
     const b = document.createElement("button");
     b.type = "button";
@@ -59,12 +119,15 @@ export function mountClimateControl(
     b.addEventListener("click", () => {
       activeMetric = metric;
       for (const [m, btn] of metricBtns) btn.setAttribute("aria-pressed", String(m === metric));
+      renderLegend(metric);
       handlers.onMetric(metric);
     });
     metricBtns.set(metric, b);
     metricRow.append(b);
   }
   body.append(metricRow);
+  renderLegend(activeMetric);
+  body.append(legend);
 
   // Season scrubber
   const seasonWrap = document.createElement("label");
