@@ -16,10 +16,31 @@ export interface CityBaseline {
   consumption: Record<ResourceKind, number>;
   /** Population the consumption was scaled from (for inspectability). */
   population: number;
+  /** Owning faction id (null = unaligned). Gates inter-faction trade. */
+  factionId: string | null;
 }
 
 /** Per-location baselines, keyed by location id. */
 export type CityBaselines = Record<string, CityBaseline>;
+
+/** Relationship stance between factions (mirrors db RelationLevel). */
+export type RelationLevel = "self" | "allies" | "friendly" | "tense" | "hostile";
+
+/**
+ * How much of a surplus a faction will share across a given stance — the
+ * fraction of an otherwise-available shipment that actually flows. Same faction
+ * shares fully; hostile factions don't trade at all.
+ */
+export const SHARE_FACTOR: Record<RelationLevel, number> = {
+  self: 1.0,
+  allies: 0.85,
+  friendly: 0.6,
+  tense: 0.25,
+  hostile: 0,
+};
+
+/** Resolves the stance between two faction ids (order-independent). */
+export type RelationFn = (a: string | null, b: string | null) => RelationLevel;
 
 /** One resource shipment across one edge in a turn (for narratable flows). */
 export interface Flow {
@@ -43,4 +64,6 @@ export interface SimState {
   pressure: Record<string, number>;
   /** Per location id → per resource net after trade (surplus + / deficit −). */
   balance: Record<string, Record<ResourceKind, number>>;
+  /** Per faction id → accumulated wealth (who benefits from surplus). */
+  wealth: Record<string, number>;
 }

@@ -181,12 +181,23 @@ scrub re-bakes from the cached DEM block (no re-fetch).
 
 A turn-based, deterministic, fully inspectable flow model over the route network
 (`src/sim/`). Each turn every city **produces and consumes** per resource —
-production from its derived resource potentials scaled by population,
-consumption from population demand — then **surplus moves toward deficit across
-the network**: shortest usable paths, capacity-limited per edge, with a
-destroyed edge carrying nothing. Unmet demand after trade becomes a **0..100
-pressure** readout. Because production derives from the climate model, moving
-the pole changes what cities make and need, and the simulation moves with it.
+production from its derived resource potentials scaled by population **and its
+faction's tech level** — then **surplus moves toward deficit across the
+network**: shortest usable paths, capacity-limited per edge, with a destroyed
+edge carrying nothing. Unmet demand after trade becomes a **0..100 pressure**
+readout. Because production derives from the climate model, moving the pole
+changes what cities make and need, and the simulation moves with it.
+
+**Faction economy.** Sharing is **relationship-gated**: cities of the same
+faction trade freely, while across faction lines a pairwise stance —
+**allies > friendly > tense > hostile** — scales how much surplus crosses (an
+ally gets the lion's share, a tense partner a trickle, a hostile neighbour
+nothing). A **wealth** metric (derived, never stored) accrues each turn to the
+faction that produces and exports surplus, so you can see who actually benefits.
+**Tech level** (1–10, authored) directly scales production, and an authored
+**influence** score is recorded for later systems. Edit all of this — tech,
+influence, and the relationship matrix — in the **Factions** panel (top-left);
+the **Simulation** control shows the live faction **wealth ranking**.
 
 The payoff is the cascade made tangible: a **chokepoint** that, when severed,
 strands supply shows up as pressure spikes in the cities behind it (verified on

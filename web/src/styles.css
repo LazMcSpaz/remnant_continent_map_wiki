@@ -270,6 +270,79 @@ body {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+.sim-section {
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.sim-wealth-name {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.faction-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  padding: 0.1rem 0;
+}
+.faction-name {
+  flex: 1;
+  color: var(--text);
+}
+.faction-meta {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.faction-card {
+  border-top: 1px solid var(--border);
+  padding-top: 0.3rem;
+  margin-top: 0.3rem;
+}
+.faction-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+.faction-field input {
+  width: 4rem;
+  font: inherit;
+  font-size: 0.72rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+}
+.faction-rel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  margin-top: 0.2rem;
+}
+.faction-rel-pair {
+  color: var(--text);
+}
+.faction-rel-select {
+  font: inherit;
+  font-size: 0.7rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.25rem;
+}
 .wiki-conn-pressure {
   display: flex;
   align-items: center;

@@ -28,26 +28,39 @@ const PER_CAPITA: Record<ResourceKind, number> = {
  *  by the working population (more hands extract more from the same land). */
 const PRODUCTION_GAIN = 0.02;
 
+/** Tech level (1..10) → production multiplier; 5 is the x1.0 baseline. Better
+ *  technology extracts more from the same land and labour. */
+export function techMultiplier(techLevel: number): number {
+  const t = Math.max(1, Math.min(10, techLevel));
+  return 0.5 + (t - 1) * (1.0 / 9); // 1→0.5, 5→~0.94, 10→1.5
+}
+
 export interface BaselineInput {
   locationId: string;
   population: number | null;
   resources: CityResources;
+  /** Owning faction id (null = unaligned). */
+  factionId: string | null;
+  /** Owning faction's tech level (1..10); defaults to baseline 5. */
+  techLevel: number;
 }
 
-/** Build one city's baseline from its population + derived resource potentials. */
+/** Build one city's baseline from its population + derived resource potentials,
+ *  with production scaled by the owning faction's tech level. */
 export function cityBaseline(input: BaselineInput): CityBaseline {
   const pop = input.population && input.population > 0 ? input.population : DEFAULT_POPULATION;
   // Workforce in "thousands of people" — keeps the units human-readable.
   const workforce = pop / 1000;
+  const tech = techMultiplier(input.techLevel);
 
   const production = {} as Record<ResourceKind, number>;
   const consumption = {} as Record<ResourceKind, number>;
   for (const r of RESOURCES) {
     const potential = input.resources.values[r]?.effective ?? 0; // 0..100
-    production[r] = potential * workforce * PRODUCTION_GAIN;
+    production[r] = potential * workforce * PRODUCTION_GAIN * tech;
     consumption[r] = workforce * PER_CAPITA[r];
   }
-  return { production, consumption, population: pop };
+  return { production, consumption, population: pop, factionId: input.factionId };
 }
 
 /** Build the baselines map for every city that has resources computed. */

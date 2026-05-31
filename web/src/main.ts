@@ -24,6 +24,9 @@ import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
 import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-panel";
 import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
+import { mountFactionsControl, type FactionsHost } from "./notes/factions-control";
+import { updateFaction, setFactionRelation } from "./layers/features";
+import { buildRelationFn } from "./sim/relations";
 import { createRouteGroup, addRouteGroupMember, createRoute } from "./layers/features";
 import { RouteWizard } from "./layers/route-wizard";
 import type { Position } from "geojson";
@@ -284,6 +287,33 @@ async function boot(): Promise<void> {
       corridorsHost,
     );
 
+    // Factions panel: economy attributes (tech, influence) + relationship matrix.
+    const factionsHost: FactionsHost = {
+      listFactions: () => [...data.factions.values()],
+      relation: (a, b) => {
+        const lv = buildRelationFn(data.factionRelations)(a, b);
+        return lv === "self" ? "friendly" : lv; // db stance has no "self"
+      },
+      wealth: (id) => (sim.isVisible() ? sim.wealthFor(id) : null),
+      setTechLevel: async (id, tech) => {
+        await updateFaction(id, { tech_level: tech });
+        applyData(await loadFeatures());
+      },
+      setInfluence: async (id, influence) => {
+        await updateFaction(id, { influence });
+        applyData(await loadFeatures());
+      },
+      setRelation: async (a, b, level) => {
+        await setFactionRelation(a, b, level);
+        applyData(await loadFeatures());
+      },
+      canEdit: () => hasBackend(),
+    };
+    const factionsControl = mountFactionsControl(
+      document.getElementById("factions-panel") ?? document.createElement("div"),
+      factionsHost,
+    );
+
     // Esc ends corridor add-members mode.
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && addingToGroupId) {
@@ -359,6 +389,7 @@ async function boot(): Promise<void> {
       if (routePanel.isOpen()) routePanel.refresh();
       if (groupPanel.isOpen()) groupPanel.refresh();
       corridorsControl.refresh();
+      factionsControl.refresh();
       sim.onDataChanged();
       // Keep the open corridor's member highlight in sync after edits.
       const gid = groupPanel.currentGroupId();

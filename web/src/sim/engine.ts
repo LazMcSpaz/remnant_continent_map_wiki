@@ -16,7 +16,7 @@
 // no map, no DB — it only reads the two contract inputs (see INTERFACE.md).
 
 import type { NetworkGraph, GraphEdge } from "../derived/network-graph";
-import { RESOURCES, type CityBaselines, type Flow, type ResourceKind, type SimState } from "./types";
+import { RESOURCES, SHARE_FACTOR, type CityBaselines, type Flow, type RelationFn, type ResourceKind, type SimState } from "./types";
 
 /** Capacity (units/turn) a single edge can carry, by its graph capacity tier
  *  and status. Damaged edges are throttled; destroyed carry nothing. */
@@ -101,17 +101,21 @@ function nodeLocation(graph: NetworkGraph, nodeId: string): string | null {
 export interface StepOptions {
   /** Cap on shipments routed per resource per turn (keeps a step bounded). */
   maxShipmentsPerResource?: number;
+  /** Stance between factions; gates how much surplus crosses faction lines.
+   *  Defaults to "everyone shares fully" when omitted. */
+  relation?: RelationFn;
 }
 
 /** The empty initial state (turn 0, everything at zero). */
 export function initialState(): SimState {
-  return { turn: 0, stockpiles: {}, flows: [], pressure: {}, balance: {} };
+  return { turn: 0, stockpiles: {}, flows: [], pressure: {}, balance: {}, wealth: {} };
 }
 
 /**
  * One deterministic forward step. Carries `prev.stockpiles` forward (so surplus
  * banked last turn is still there), applies production/consumption, trades
- * across the network, and reports flows + pressure.
+ * across the network (relationship-gated), reports flows + pressure, and
+ * accrues faction wealth from the value that changes hands.
  */
 export function step(
   prev: SimState,
@@ -119,6 +123,7 @@ export function step(
   baselines: CityBaselines,
   opts: StepOptions = {},
 ): SimState {
+  const relation: RelationFn = opts.relation ?? (() => "self");
   const maxShip = opts.maxShipmentsPerResource ?? 500;
 
   // Node id ⇄ location id, for cities that are in the graph.
@@ -149,6 +154,9 @@ export function step(
   // 2. TRADE: per resource, move surplus toward deficit across usable edges.
   const adj = buildAdjacency(graph);
   const flows: Flow[] = [];
+  // Export ledger: value a faction realizes selling surplus to OTHER factions'
+  // cities this turn (keyed by exporting faction id) — feeds the wealth premium.
+  const exportValue: Record<string, number> = {};
   const remaining = new Map<string, number>();
   for (const e of graph.edges) remaining.set(e.id, edgeThroughput(e));
 
@@ -162,30 +170,55 @@ export function step(
     if (surplusNode.size === 0) continue;
 
     let shipments = 0;
-    // Greedy: repeatedly take a source and push to the nearest deficit sink.
+    // Greedy: repeatedly take a source and push to the nearest deficit sink it
+    // is willing to supply. A source won't keep refilling a *foreign* sink (one
+    // share-scaled shipment per pair), so a tense partner ends up with less than
+    // an ally; same-faction sinks can be topped up freely. Hostile = no trade.
     for (const { nodeId: srcNode, locId: srcLoc } of locNodes) {
       let avail = stock[srcLoc][r];
       if (avail <= 0.01) continue;
+      const srcFaction = baselines[srcLoc].factionId;
+      const servedForeign = new Set<string>(); // dest locs already given a share
       while (avail > 0.01 && shipments < maxShip) {
-        // Sinks recomputed each shipment (a sink may have just been satisfied).
+        // Sinks recomputed each shipment (a sink may have just been satisfied),
+        // limited to ones this source will share with given the stance.
         const sinks = new Set<string>();
         for (const { nodeId, locId } of locNodes) {
-          if (nodeId !== srcNode && stock[locId][r] < -0.01) sinks.add(nodeId);
+          if (nodeId === srcNode || stock[locId][r] >= -0.01) continue;
+          const stance = relation(srcFaction, baselines[locId].factionId);
+          if (SHARE_FACTOR[stance] <= 0) continue; // hostile: never share
+          if (stance !== "self" && servedForeign.has(locId)) continue; // already shared once
+          sinks.add(nodeId);
         }
         if (sinks.size === 0) break;
         const path = findPath(srcNode, sinks, adj, remaining);
-        if (!path) break; // no usable route to any remaining deficit
+        if (!path) break; // no usable route to any willing deficit
         const destLoc = nodeLocation(graph, path.dest)!;
+        const stance = relation(srcFaction, baselines[destLoc].factionId);
+        const share = SHARE_FACTOR[stance];
         const need = -stock[destLoc][r];
         // Bottleneck = min remaining capacity along the path.
         let cap = Infinity;
         for (const e of path.edges) cap = Math.min(cap, remaining.get(e.id) ?? 0);
-        const amount = Math.min(avail, need, cap);
-        if (amount <= 0.01) break;
+        // Stance scales how much of the need this source will cover.
+        const amount = Math.min(avail, need * share, cap);
+        if (stance !== "self") servedForeign.add(destLoc);
+        // A foreign sink was just removed from contention (served), so continue;
+        // a same-faction sink would recur (still in deficit) → break to avoid a
+        // loop when the path's capacity is what's exhausted.
+        if (amount <= 0.01) {
+          if (stance === "self") break;
+          continue;
+        }
         // Apply: move goods, spend capacity, record one flow per edge.
         stock[srcLoc][r] -= amount;
         stock[destLoc][r] += amount;
         avail -= amount;
+        // Selling surplus across faction lines realizes value for the exporter.
+        if (stance !== "self" && srcFaction) {
+          const VALUE_R = { food: 1.0, water: 0.5, energy: 1.2, production: 2.0 }[r];
+          exportValue[srcFaction] = (exportValue[srcFaction] ?? 0) + amount * VALUE_R * 0.25;
+        }
         for (const e of path.edges) {
           remaining.set(e.id, (remaining.get(e.id) ?? 0) - amount);
           flows.push({
@@ -212,7 +245,27 @@ export function step(
     pressure[locId] = demand > 0 ? Math.max(0, Math.min(100, (unmet / demand) * 100)) : 0;
   }
 
-  return { turn: prev.turn + 1, stockpiles: stock, flows, pressure, balance: net };
+  // 4. WEALTH: who benefits from the production of surplus. A faction accrues
+  // the value of the surplus its cities produce each turn (this turn's positive
+  // net per resource, value-weighted) plus the export premium realized selling
+  // surplus across faction lines. Production goods are the most valuable.
+  // Carried forward — wealth banks turn over turn.
+  const VALUE: Record<ResourceKind, number> = { food: 1.0, water: 0.5, energy: 1.2, production: 2.0 };
+  const wealth: Record<string, number> = { ...prev.wealth };
+  for (const { locId } of locNodes) {
+    const fid = baselines[locId].factionId;
+    if (!fid) continue; // unaligned cities accrue no faction wealth
+    let gain = 0;
+    for (const r of RESOURCES) {
+      if (net[locId][r] > 0) gain += net[locId][r] * VALUE[r];
+    }
+    wealth[fid] = (wealth[fid] ?? 0) + gain;
+  }
+  for (const [fid, v] of Object.entries(exportValue)) {
+    wealth[fid] = (wealth[fid] ?? 0) + v;
+  }
+
+  return { turn: prev.turn + 1, stockpiles: stock, flows, pressure, balance: net, wealth };
 }
 
 /** Run N steps from a starting state (convenience for jumping to a turn). */

@@ -10,9 +10,10 @@ import type { ClimateInputs } from "../derived/climate";
 import { climateInputs } from "../derived/climate";
 import { deriveCityResources } from "../derived/resources";
 import { buildBaselines } from "./baselines";
+import { buildRelationFn } from "./relations";
 import { step, run, initialState } from "./engine";
 import { SimOverlay } from "./sim-overlay";
-import type { CityBaselines, SimState } from "./types";
+import type { CityBaselines, RelationFn, SimState } from "./types";
 import type { SimHost, SimSummary } from "./sim-control";
 
 export class SimController implements SimHost {
@@ -22,6 +23,7 @@ export class SimController implements SimHost {
   private setStatus: (msg: string, kind?: "info" | "error") => void;
 
   private baselines: CityBaselines = {};
+  private relation: RelationFn = () => "self";
   private state: SimState = initialState();
   private ready = false;
 
@@ -58,9 +60,17 @@ export class SimController implements SimHost {
         if (!detail.lngLat) continue;
         const overrides = (detail.resources ?? {}) as Record<string, number>;
         const resources = await deriveCityResources(detail.lngLat, overrides, inp);
-        inputs.push({ locationId: id, population: detail.population, resources });
+        const techLevel = detail.factionId ? data.factions.get(detail.factionId)?.tech_level ?? 5 : 5;
+        inputs.push({
+          locationId: id,
+          population: detail.population,
+          resources,
+          factionId: detail.factionId,
+          techLevel,
+        });
       }
       this.baselines = buildBaselines(inputs);
+      this.relation = buildRelationFn(data.factionRelations);
       this.state = initialState();
       this.ready = true;
       this.overlay.update(this.state, this.getGraph());
@@ -77,19 +87,20 @@ export class SimController implements SimHost {
 
   // --- SimHost ---
   stepTurn(): SimSummary {
-    this.state = step(this.state, this.getGraph(), this.baselines);
+    this.state = step(this.state, this.getGraph(), this.baselines, { relation: this.relation });
     this.overlay.update(this.state, this.getGraph());
     return this.summary();
   }
 
   goToTurn(turn: number): SimSummary {
+    const opts = { relation: this.relation };
     if (turn <= 0) {
       this.state = initialState();
     } else if (turn >= this.state.turn) {
-      this.state = run(this.state, turn - this.state.turn, this.getGraph(), this.baselines);
+      this.state = run(this.state, turn - this.state.turn, this.getGraph(), this.baselines, opts);
     } else {
       // Going back: re-run from scratch (deterministic, so this is exact).
-      this.state = run(initialState(), turn, this.getGraph(), this.baselines);
+      this.state = run(initialState(), turn, this.getGraph(), this.baselines, opts);
     }
     this.overlay.update(this.state, this.getGraph());
     return this.summary();
@@ -114,12 +125,26 @@ export class SimController implements SimHost {
     return this.state.pressure[locationId] ?? null;
   }
 
+  /** Wealth for one faction at the current turn (for the faction/wiki panels). */
+  wealthFor(factionId: string): number {
+    return this.state.wealth[factionId] ?? 0;
+  }
+
   private summary(): SimSummary {
     const pressures = Object.values(this.state.pressure);
     const cities = pressures.length;
     const mean = cities ? pressures.reduce((a, b) => a + b, 0) / cities : 0;
     const strained = pressures.filter((p) => p >= 50).length;
     const tradeVolume = this.state.flows.reduce((a, f) => a + f.amount, 0);
-    return { turn: this.state.turn, cities, meanPressure: mean, strained, tradeVolume };
+    const factions = this.getData().factions;
+    const wealth = Object.entries(this.state.wealth)
+      .map(([id, w]) => ({
+        id,
+        name: factions.get(id)?.name ?? "unknown",
+        color: factions.get(id)?.color ?? "#888888",
+        wealth: w,
+      }))
+      .sort((a, b) => b.wealth - a.wealth);
+    return { turn: this.state.turn, cities, meanPressure: mean, strained, tradeVolume, wealth };
   }
 }
