@@ -37,9 +37,21 @@ function str(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
 }
 
+/** Build a MapTiler vector style URL from a key + style id, or null if no key. */
+function maptilerStyleUrl(env: ImportMetaEnv): string | null {
+  const key = str(env.VITE_MAPTILER_KEY, "");
+  if (key === "") return null;
+  // Clean, neutral cartography by default; override with VITE_MAPTILER_STYLE
+  // (e.g. streets-v2, landscape, basic-v2, toner-v2).
+  const style = str(env.VITE_MAPTILER_STYLE, "dataviz");
+  return `https://api.maptiler.com/maps/${style}/style.json?key=${key}`;
+}
+
 export function readMapConfig(): MapConfig {
   const env = import.meta.env;
-  const styleUrl = str(env.VITE_MAP_STYLE_URL, "");
+  // Precedence: explicit full style URL > MapTiler key > raster fallback.
+  const explicit = str(env.VITE_MAP_STYLE_URL, "");
+  const styleUrl = explicit !== "" ? explicit : maptilerStyleUrl(env);
   return {
     styleUrl: styleUrl === "" ? null : styleUrl,
     // CARTO "Voyager — no labels": real roads, highways, and rail (which the
