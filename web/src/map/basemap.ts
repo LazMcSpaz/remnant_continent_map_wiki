@@ -8,8 +8,14 @@
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import { AOI, readMapConfig, type MapConfig } from "../config";
 import { bearingToPole, DEFAULT_POLE } from "../derived/climate";
+import { SEA_COLOR } from "../derived/world-base";
 
-/** Build a minimal raster style as a dev fallback when no vector style is set. */
+/**
+ * Minimal raster style. The visible substrate is the *fictional* world baked by
+ * WorldBase (added after load); OSM is kept as a hidden "reference" layer the
+ * Layers panel can toggle on. The background is the sea colour, so the world
+ * fades into open ocean past the baked extent with no hard edge.
+ */
 function rasterStyle(cfg: MapConfig): StyleSpecification {
   return {
     version: 8,
@@ -22,8 +28,10 @@ function rasterStyle(cfg: MapConfig): StyleSpecification {
       },
     },
     layers: [
-      { id: "background", type: "background", paint: { "background-color": "#0e1116" } },
-      { id: "osm", type: "raster", source: "osm" },
+      { id: "background", type: "background", paint: { "background-color": SEA_COLOR } },
+      // Reference only — hidden until toggled on (sits above the fictional base,
+      // below authored features).
+      { id: "osm", type: "raster", source: "osm", layout: { visibility: "none" } },
     ],
   };
 }

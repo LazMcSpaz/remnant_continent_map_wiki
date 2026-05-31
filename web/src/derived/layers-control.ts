@@ -9,7 +9,7 @@ import type { RiversOverlay } from "./rivers-overlay";
 import type { SimController } from "../sim/sim-controller";
 
 interface Row {
-  id: LayerGroup | "climate" | "water" | "rivers" | "sim" | "chokepoints";
+  id: LayerGroup | "climate" | "water" | "rivers" | "sim" | "chokepoints" | "reference";
   label: string;
   swatch: string;
   /** Initial checked state. */
@@ -17,6 +17,7 @@ interface Row {
 }
 
 const ROWS: Row[] = [
+  { id: "reference", label: "Reference (real map)", swatch: "#ccd3da", on: false },
   { id: "sim", label: "Simulation (pressure)", swatch: "#d23b3b", on: false },
   { id: "chokepoints", label: "Chokepoints", swatch: "#d23b3b", on: false },
   { id: "climate", label: "Climate zones", swatch: "#e85d3a", on: false },
@@ -62,7 +63,10 @@ export function mountLayersPanel(
       else if (row.id === "rivers") rivers.setVisible(cb.checked);
       else if (row.id === "sim") sim.setVisible(cb.checked);
       else if (row.id === "chokepoints") onChokepoint(cb.checked);
-      else setGroupVisible(map, row.id, cb.checked);
+      else if (row.id === "reference") {
+        // OSM is the demoted real-world reference layer.
+        if (map.getLayer("osm")) map.setLayoutProperty("osm", "visibility", cb.checked ? "visible" : "none");
+      } else setGroupVisible(map, row.id, cb.checked);
     });
 
     label.append(cb, swatch, text);
