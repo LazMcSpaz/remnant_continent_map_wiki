@@ -48,6 +48,12 @@ export interface WikiHost {
   getResources(detail: LocationDetail): Promise<CityResources | null>;
   /** Simulation pressure (0..100) at this location, or null if sim isn't running. */
   getPressure(detail: LocationDetail): { pressure: number; turn: number } | null;
+  /** Factions available to assign a city to (id, name). */
+  listFactions(): Array<{ id: string; name: string }>;
+  /** Assign (or clear with null) the city's faction. */
+  setLocationFaction(locationId: string, factionId: string | null): Promise<void>;
+  /** Create a new faction (major or minor); returns its id. */
+  createFaction(name: string, tier: "major" | "minor"): Promise<string>;
   /** Fly to and select another location, re-opening the panel on it. */
   navigateTo(id: string): void;
   /** Reload authored data + rebuild the graph after an edit. */
@@ -105,6 +111,8 @@ function renderOverview(hostEl: HTMLElement, ctx: RenderCtx): void {
       ["New-world name", detail.name],
       ["Old-world name", detail.oldWorldName ?? "—"],
       ["Faction", detail.factionName ?? "Unaligned"],
+      ["Tech level", String(detail.techLevel)],
+      ["Influence", String(detail.influence)],
     ];
     if (detail.lngLat) {
       rows.push(["Coordinates", `${detail.lngLat[1].toFixed(3)}, ${detail.lngLat[0].toFixed(3)}`]);
@@ -128,16 +136,56 @@ function renderOverview(hostEl: HTMLElement, ctx: RenderCtx): void {
     const nameIn = textField("New-world name", detail.name);
     const oldIn = textField("Old-world name", detail.oldWorldName ?? "");
     const typeIn = textField("Type", detail.type);
+
+    // Faction picker: existing factions, Unaligned, or "+ New faction…".
+    const NEW = "__new__";
+    const factionRow = el("label", { className: "wiki-field" });
+    const factionSel = document.createElement("select");
+    factionSel.className = "wiki-field-input";
+    const optNone = new Option("Unaligned", "");
+    factionSel.add(optNone);
+    for (const f of host.listFactions()) factionSel.add(new Option(f.name, f.id));
+    factionSel.add(new Option("+ New faction…", NEW));
+    factionSel.value = detail.factionId ?? "";
+    factionRow.append(el("span", { className: "wiki-field-label" }, ["Faction"]), factionSel);
+
+    const techIn = textField("Tech level (1–10)", String(detail.techLevel), "number");
+    techIn.input.min = "1";
+    techIn.input.max = "10";
+    const inflIn = textField("Influence", String(detail.influence), "number");
+    inflIn.input.min = "0";
+
     hostEl.replaceChildren(
       nameIn.row,
       oldIn.row,
       typeIn.row,
+      factionRow,
+      techIn.row,
+      inflIn.row,
       saveCancel(
         async () => {
+          // Resolve faction: a "+ New faction…" choice prompts for name + tier.
+          let factionId: string | null = factionSel.value || null;
+          if (factionSel.value === NEW) {
+            const fname = window.prompt("New faction name:")?.trim();
+            if (!fname) {
+              host.setStatus("Faction creation cancelled.");
+              return;
+            }
+            const major = window.confirm(
+              `Is "${fname}" a MAJOR faction?\n\nOK = Major (always shown in the Factions window)\nCancel = Minor (shown only behind a toggle)`,
+            );
+            factionId = await host.createFaction(fname, major ? "major" : "minor");
+          }
+          const tech = Math.max(1, Math.min(10, Math.round(Number(techIn.input.value) || detail.techLevel)));
+          const infl = Math.max(0, Math.round(Number(inflIn.input.value) || 0));
           await updateLocationFields(detail.id, {
             name: nameIn.input.value.trim() || detail.name,
             old_world_name: oldIn.input.value.trim() || null,
             type: typeIn.input.value.trim() || detail.type,
+            faction_id: factionId,
+            tech_level: tech,
+            influence: infl,
           });
           await host.reloadData();
           panel.rerenderActive();

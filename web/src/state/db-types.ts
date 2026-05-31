@@ -36,11 +36,11 @@ export interface Faction extends Timestamps {
   id: Uuid;
   name: string;
   color: string;
-  /** Authored 1..10; scales production in the simulation (5 = baseline). */
-  tech_level: number;
-  /** Authored manual influence score; reserved for later systems. */
-  influence: number;
+  /** major = always shown in the Factions window; minor = behind a toggle. */
+  tier: FactionTier;
 }
+
+export type FactionTier = "major" | "minor";
 
 /** Symmetric pairwise stance between two factions; gates surplus sharing. */
 export type RelationLevel = "allies" | "friendly" | "tense" | "hostile";
@@ -66,6 +66,10 @@ export interface Location extends Timestamps {
   type: string;
   faction_id: Uuid | null;
   resource_overrides: Json;
+  /** Authored 1..10; scales this city's production in the simulation. */
+  tech_level: number;
+  /** Authored influence; a faction's influence is the sum across its cities. */
+  influence: number;
 }
 
 export interface Route extends Timestamps {
@@ -136,6 +140,8 @@ export interface LocationGeo {
   faction_id: Uuid | null;
   population: number | null;
   resource_overrides: Json;
+  tech_level: number;
+  influence: number;
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }

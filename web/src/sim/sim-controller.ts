@@ -60,13 +60,13 @@ export class SimController implements SimHost {
         if (!detail.lngLat) continue;
         const overrides = (detail.resources ?? {}) as Record<string, number>;
         const resources = await deriveCityResources(detail.lngLat, overrides, inp);
-        const techLevel = detail.factionId ? data.factions.get(detail.factionId)?.tech_level ?? 5 : 5;
         inputs.push({
           locationId: id,
           population: detail.population,
           resources,
           factionId: detail.factionId,
-          techLevel,
+          // Tech is now a per-city authored attribute (scales its production).
+          techLevel: detail.techLevel,
         });
       }
       this.baselines = buildBaselines(inputs);

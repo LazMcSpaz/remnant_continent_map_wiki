@@ -26,8 +26,9 @@ import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-pane
 import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
 import { mountFactionsControl, type FactionsHost } from "./notes/factions-control";
-import { updateFaction, setFactionRelation } from "./layers/features";
+import { updateFaction, setFactionRelation, createFaction, setLocationFaction } from "./layers/features";
 import { buildRelationFn } from "./sim/relations";
+import { deriveFactionStats } from "./derived/faction-stats";
 import { createRouteGroup, addRouteGroupMember, createRoute } from "./layers/features";
 import { RouteWizard } from "./layers/route-wizard";
 import type { Position } from "geojson";
@@ -138,6 +139,9 @@ async function boot(): Promise<void> {
         const p = sim.pressureFor(detail.id);
         return p == null ? null : { pressure: p, turn: sim.maxTurn() };
       },
+      listFactions: () => [...data.factions.values()].map((f) => ({ id: f.id, name: f.name })),
+      setLocationFaction: (locationId, factionId) => setLocationFaction(locationId, factionId),
+      createFaction: (name, tier) => createFaction(name, tier),
       canEdit: () => hasBackend(),
       setStatus,
       navigateTo: (id) => selectLocation(id),
@@ -298,18 +302,25 @@ async function boot(): Promise<void> {
 
     // Factions panel: economy attributes (tech, influence) + relationship matrix.
     const factionsHost: FactionsHost = {
-      listFactions: () => [...data.factions.values()],
+      listFactions: () => {
+        const stats = deriveFactionStats(data.locationDetails.values());
+        return [...data.factions.values()].map((f) => {
+          const s = stats.get(f.id);
+          return {
+            faction: f,
+            techLevel: s?.techLevel ?? null,
+            influence: s?.influence ?? 0,
+            cityCount: s?.cityCount ?? 0,
+            wealth: sim.isVisible() ? sim.wealthFor(f.id) : null,
+          };
+        });
+      },
       relation: (a, b) => {
         const lv = buildRelationFn(data.factionRelations)(a, b);
         return lv === "self" ? "friendly" : lv; // db stance has no "self"
       },
-      wealth: (id) => (sim.isVisible() ? sim.wealthFor(id) : null),
-      setTechLevel: async (id, tech) => {
-        await updateFaction(id, { tech_level: tech });
-        applyData(await loadFeatures());
-      },
-      setInfluence: async (id, influence) => {
-        await updateFaction(id, { influence });
+      setTier: async (id, tier) => {
+        await updateFaction(id, { tier });
         applyData(await loadFeatures());
       },
       setRelation: async (a, b, level) => {

@@ -1,21 +1,31 @@
-// Factions control (top-left): authoring for the faction economy attributes
-// the simulation reads — tech level (scales production), influence (manual,
-// reserved), and the pairwise relationship matrix (allies/friendly/tense/
-// hostile) that gates how much surplus flows between factions.
+// Factions control (top-left). A faction's economy figures are now DERIVED from
+// its cities (tech = pop-weighted average, influence = sum), so this panel shows
+// those read-only and lets you author the things that *are* faction-level: name,
+// color, tier (major/minor), and the pairwise relationship matrix that gates how
+// much surplus flows between factions.
 //
-// Pure DOM; talks only to a FactionsHost (implemented in main.ts). Edits persist
-// then trigger a reload + sim refresh through the host.
+// Major factions always list; minor ones appear only when the "Show minor" toggle
+// is on. Pure DOM; talks only to a FactionsHost (implemented in main.ts).
 
-import type { Faction, RelationLevel } from "../state/db-types";
+import type { Faction, FactionTier, RelationLevel } from "../state/db-types";
+
+export interface FactionView {
+  faction: Faction;
+  /** Derived pop-weighted tech (null if the faction has no cities). */
+  techLevel: number | null;
+  /** Derived summed influence. */
+  influence: number;
+  cityCount: number;
+  /** Sim wealth at the current turn (null if sim not running). */
+  wealth: number | null;
+}
 
 export interface FactionsHost {
-  listFactions(): Faction[];
+  /** All factions with their derived stats. */
+  listFactions(): FactionView[];
   /** Current stance between two factions (defaults to "friendly"). */
   relation(a: string, b: string): RelationLevel;
-  /** Faction wealth at the current sim turn (null if sim not running). */
-  wealth(factionId: string): number | null;
-  setTechLevel(id: string, tech: number): Promise<void>;
-  setInfluence(id: string, influence: number): Promise<void>;
+  setTier(id: string, tier: FactionTier): Promise<void>;
   setRelation(a: string, b: string, level: RelationLevel): Promise<void>;
   canEdit(): boolean;
 }
@@ -28,6 +38,7 @@ const LEVELS: RelationLevel[] = ["allies", "friendly", "tense", "hostile"];
 
 export function mountFactionsControl(container: HTMLElement, host: FactionsHost): FactionsControl {
   let expanded = false;
+  let showMinor = false;
 
   const render = (): void => {
     container.replaceChildren();
@@ -35,87 +46,100 @@ export function mountFactionsControl(container: HTMLElement, host: FactionsHost)
     heading.textContent = "Factions";
     container.append(heading);
 
-    const factions = host.listFactions();
-    if (factions.length === 0) {
-      container.append(muted("No factions yet."));
+    const all = host.listFactions();
+    if (all.length === 0) {
+      container.append(muted("No factions yet. Assign a city to one from its Overview tab."));
       container.hidden = false;
       return;
+    }
+
+    // Minor factions only show behind the toggle.
+    const hasMinor = all.some((v) => v.faction.tier === "minor");
+    const shown = all.filter((v) => v.faction.tier === "major" || showMinor);
+
+    if (hasMinor) {
+      const t = document.createElement("label");
+      t.className = "faction-toggle";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = showMinor;
+      cb.addEventListener("change", () => {
+        showMinor = cb.checked;
+        render();
+      });
+      t.append(cb, text("Show minor factions", "faction-meta"));
+      container.append(t);
     }
 
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "wiki-btn";
-    toggle.textContent = expanded ? "Hide details" : "Edit economy & relations";
+    toggle.textContent = expanded ? "Hide details" : "Details & relations";
     toggle.addEventListener("click", () => {
       expanded = !expanded;
       render();
     });
     container.append(toggle);
 
-    if (!expanded) {
-      // Compact: name + tech + wealth (if simulating).
-      for (const f of factions) {
-        const row = document.createElement("div");
-        row.className = "faction-row";
-        row.append(swatch(f.color), text(f.name, "faction-name"));
-        const w = host.wealth(f.id);
-        const meta = w == null ? `T${f.tech_level}` : `T${f.tech_level} · ${Math.round(w).toLocaleString()}⛀`;
-        row.append(text(meta, "faction-meta"));
-        container.append(row);
-      }
-      container.hidden = false;
-      return;
-    }
-
-    // Expanded: per-faction tech/influence editors.
-    for (const f of factions) {
+    for (const v of shown) {
+      const f = v.faction;
       const card = document.createElement("div");
       card.className = "faction-card";
+
       const head = document.createElement("div");
       head.className = "faction-row";
       head.append(swatch(f.color), text(f.name, "faction-name"));
-      const w = host.wealth(f.id);
-      if (w != null) head.append(text(`${Math.round(w).toLocaleString()}⛀`, "faction-meta"));
+      if (f.tier === "minor") head.append(text("minor", "faction-tag"));
+      const techStr = v.techLevel == null ? "—" : v.techLevel.toFixed(1);
+      const meta = v.wealth == null
+        ? `T${techStr} · ${v.cityCount}c`
+        : `T${techStr} · ${Math.round(v.wealth).toLocaleString()}⛀`;
+      head.append(text(meta, "faction-meta"));
       card.append(head);
 
-      if (host.canEdit()) {
+      if (expanded) {
         card.append(
-          numberField("Tech", f.tech_level, 1, 10, (v) => void host.setTechLevel(f.id, v)),
-          numberField("Influence", f.influence, 0, 1000, (v) => void host.setInfluence(f.id, v)),
+          statLine("Tech (pop-weighted)", v.techLevel == null ? "—" : v.techLevel.toFixed(2)),
+          statLine("Influence (sum)", String(v.influence)),
+          statLine("Cities", String(v.cityCount)),
         );
-      } else {
-        card.append(muted(`Tech ${f.tech_level} · Influence ${f.influence}`));
+        if (host.canEdit()) {
+          const tierSel = document.createElement("select");
+          tierSel.className = "faction-rel-select";
+          for (const tier of ["major", "minor"] as FactionTier[]) {
+            tierSel.add(new Option(tier, tier));
+          }
+          tierSel.value = f.tier;
+          tierSel.addEventListener("change", () => void host.setTier(f.id, tierSel.value as FactionTier));
+          const row = document.createElement("div");
+          row.className = "faction-rel-row";
+          row.append(text("Tier", "faction-rel-pair"), tierSel);
+          card.append(row);
+        }
       }
       container.append(card);
     }
 
-    // Relationship matrix (each unordered pair once).
-    if (factions.length >= 2) {
+    // Relationship matrix (expanded only), across the shown factions.
+    if (expanded && shown.length >= 2) {
       const relHead = document.createElement("div");
       relHead.className = "sim-section";
       relHead.textContent = "Relations";
       container.append(relHead);
 
-      for (let i = 0; i < factions.length; i++) {
-        for (let j = i + 1; j < factions.length; j++) {
-          const a = factions[i];
-          const b = factions[j];
+      for (let i = 0; i < shown.length; i++) {
+        for (let j = i + 1; j < shown.length; j++) {
+          const a = shown[i].faction;
+          const b = shown[j].faction;
           const row = document.createElement("div");
           row.className = "faction-rel-row";
           row.append(text(`${a.name} ↔ ${b.name}`, "faction-rel-pair"));
           if (host.canEdit()) {
             const sel = document.createElement("select");
             sel.className = "faction-rel-select";
-            for (const lv of LEVELS) {
-              const opt = document.createElement("option");
-              opt.value = lv;
-              opt.textContent = lv;
-              sel.append(opt);
-            }
+            for (const lv of LEVELS) sel.add(new Option(lv, lv));
             sel.value = host.relation(a.id, b.id);
-            sel.addEventListener("change", () => {
-              void host.setRelation(a.id, b.id, sel.value as RelationLevel);
-            });
+            sel.addEventListener("change", () => void host.setRelation(a.id, b.id, sel.value as RelationLevel));
             row.append(sel);
           } else {
             row.append(text(host.relation(a.id, b.id), "faction-meta"));
@@ -154,29 +178,9 @@ function muted(content: string): HTMLElement {
   return p;
 }
 
-function numberField(
-  label: string,
-  value: number,
-  min: number,
-  max: number,
-  onCommit: (v: number) => void,
-): HTMLElement {
-  const wrap = document.createElement("label");
-  wrap.className = "faction-field";
-  const l = document.createElement("span");
-  l.textContent = label;
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = String(min);
-  input.max = String(max);
-  input.value = String(value);
-  input.addEventListener("change", () => {
-    let v = Number(input.value);
-    if (!Number.isFinite(v)) v = value;
-    v = Math.max(min, Math.min(max, Math.round(v)));
-    input.value = String(v);
-    onCommit(v);
-  });
-  wrap.append(l, input);
-  return wrap;
+function statLine(label: string, value: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "faction-field";
+  row.append(text(label, ""), text(value, "faction-meta"));
+  return row;
 }
