@@ -15,10 +15,13 @@ cp .env.example .env   # optional — adjust the basemap source
 npm run dev            # http://localhost:5173
 ```
 
-With no `.env`, the app renders a raster OpenStreetMap basemap so it works out
-of the box. To use OSM **vector** tiles (the intended direction), set
-`VITE_MAP_STYLE_URL` in `.env` to a MapLibre style URL (e.g. a self-hosted
-PMTiles style). See `.env.example`.
+With no `.env`, the app renders a **label-free** raster basemap (CARTO "Voyager —
+no labels"): real roads, highways, and rail — which the routes tool depends on —
+but **no place names**. This keeps the new-north rotation from flipping any text
+upside-down, and stops real-world labels from fighting the fiction (only our own
+new-world city names show, as upright HTML markers). Override the tile source
+(e.g. back to OSM) with `VITE_RASTER_TILE_URL`, or set `VITE_MAP_STYLE_URL` to a
+full MapLibre vector style. See `.env.example`.
 
 ## Scripts
 
