@@ -67,6 +67,14 @@ export function createBasemap(container: HTMLElement): BasemapHandle {
     "bottom-right",
   );
 
+  // The `hash` option parses the URL (#map=zoom/lat/lng/bearing/pitch) AFTER the
+  // constructor's `bearing`, so a stored hash with no bearing component resets
+  // us to true north. If the hash didn't specify a bearing, (re)apply the pole
+  // orientation; an explicit bearing in the URL still wins (shared links).
+  if (!hashHasBearing()) {
+    map.setBearing(bearingToPole(AOI.center, DEFAULT_POLE));
+  }
+
   enableMiddleMousePan(map);
 
   const ready = new Promise<void>((resolve) => {
@@ -74,6 +82,14 @@ export function createBasemap(container: HTMLElement): BasemapHandle {
   });
 
   return { map, ready };
+}
+
+/** True when the URL hash (#map=zoom/lat/lng/bearing/…) carries a bearing. */
+function hashHasBearing(): boolean {
+  const m = /(?:^|&)map=([^&]+)/.exec(window.location.hash.replace(/^#/, ""));
+  if (!m) return false;
+  // zoom/lat/lng[/bearing[/pitch]] — a 4th field means a bearing was stored.
+  return m[1].split("/").length >= 4;
 }
 
 /** Pan the map by dragging with the middle mouse button (button 1). */
