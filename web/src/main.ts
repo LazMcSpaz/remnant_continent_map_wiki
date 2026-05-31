@@ -26,7 +26,8 @@ import { RouteWizard } from "./layers/route-wizard";
 import type { Position } from "geojson";
 import { getSession, onAuthChange, signOut } from "./state/auth";
 import { createLoginGate } from "./state/login-gate";
-import { climateInputs, temperatureAt, growingWarmth, sampleElevation } from "./derived/climate";
+import { climateInputs, growingWarmth, climateAt } from "./derived/climate";
+import { sampleElevation as sampleDemElevation } from "./derived/elevation";
 import { deriveCityResources } from "./derived/resources";
 import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
@@ -93,18 +94,20 @@ async function boot(): Promise<void> {
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
       getGraph: () => graph,
-      getClimate: (detail) => {
+      getClimate: async (detail) => {
         if (!detail.lngLat) return null;
         const inp = climateInputs(data.worldSettings);
-        // Locations carry no elevation of their own; sample it from the terrain
-        // region beneath the city so terrain elevation edits cascade into the
-        // city's derived climate.
-        const elev = sampleElevation(detail.lngLat, data.terrainRegions);
-        const tempC = temperatureAt(detail.lngLat, elev, inp);
+        // Sample real elevation from the DEM (null if a tile is unavailable).
+        const elevM = await sampleDemElevation(detail.lngLat[0], detail.lngLat[1]);
+        const c = climateAt(detail.lngLat, elevM ?? 0, inp);
         return {
-          tempC,
-          warmth: growingWarmth(tempC),
-          season: inp.season,
+          tempC: c.tempC,
+          warmth: growingWarmth(c.tempC),
+          precip: c.precip,
+          effLat: c.effLat,
+          elevationM: elevM,
+          windBand: c.windBand,
+          windBearing: c.windBearing,
           seasonLabel: seasonName(inp.season),
         };
       },

@@ -98,16 +98,26 @@ The whole route system — segments, classes, breaks, and corridors — is inclu
 in Save / Export and restored on Import (ids remapped, breaks re-snapped onto
 their routes, corridor membership rebuilt).
 
-## Derived climate cascade (Phase 2)
+## Rule-based climate (Phase 2)
 
-`src/derived/climate.ts` turns the authored inputs into a temperature field,
-growing warmth, and crop suitability — pure functions, never stored. The
-control bottom-left toggles a **choropleth overlay** (temperature blue→red or
-crop suitability brown→green over the terrain regions) and a **season scrubber**:
-drag it and the whole derived field recomputes live (committed to
-`world_settings.season` on release). Moving the pole would remap the field the
-same way. A clicked city's **Climate tab** shows its derived temperature and
-growing warmth. See ADR 0004.
+Climate is **computed by rules**, not authored as polygons. `src/derived/climate.ts`
+takes the new **North Pole** (`world_settings.pole_geom`, set on **Peru**) plus
+real **elevation** sampled from terrain-RGB tiles (`src/derived/elevation.ts`)
+and derives **temperature, precipitation, and prevailing wind** for any point:
+
+- temperature ∝ sin(distance-from-pole) (pole cold, new equator hot), with a
+  hemisphere-aware seasonal swing and an elevation lapse;
+- precipitation from the latitude band (ITCZ wet → subtropics dry → mid-lat wet
+  → poles dry) with an orographic lift;
+- wind band (trade easterlies / westerlies / polar easterlies) oriented to the
+  new axis.
+
+The polar shift to Peru flips the familiar gradient: the old Arctic is the new
+tropics (hot), the Gulf/South is the new cold side, and the Midwest sits
+temperate in between. A clicked city's **Climate tab** shows temperature,
+precipitation, growing warmth, effective latitude, sampled elevation, and wind.
+The inundation model (new sea level → coastlines) and the full-map climate
+overlay are the next chunks.
 
 ## Terrain editor (cascade in action)
 
