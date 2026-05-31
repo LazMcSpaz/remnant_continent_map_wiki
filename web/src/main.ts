@@ -15,6 +15,7 @@ import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
+import { RiversOverlay } from "./derived/rivers-overlay";
 import { mountClimateControl } from "./derived/climate-control";
 import { mountLayersPanel } from "./derived/layers-control";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
@@ -91,6 +92,9 @@ async function boot(): Promise<void> {
     // Derived climate overlay (Phase 2): a static raster, baked once on toggle.
     const climate = new ClimateOverlay(map, setStatus);
     climate.recompute(data);
+    // Derived hydrology overlay: rivers from DEM flow accumulation.
+    const rivers = new RiversOverlay(map, setStatus);
+    rivers.recompute(data);
 
     const host: WikiHost = {
       getDetail: (id) => data.locationDetails.get(id),
@@ -101,7 +105,7 @@ async function boot(): Promise<void> {
         const c = await sampleClimate(detail.lngLat, inp); // samples the DEM
         return {
           tempC: c.tempC,
-          warmth: growingWarmth(c.meanTempC),
+          warmth: growingWarmth(c.growSeasonTempC),
           precip: c.precip,
           effLat: c.effLat,
           elevationM: c.elevationM,
@@ -112,11 +116,11 @@ async function boot(): Promise<void> {
           seasonLabel: seasonName(inp.season),
         };
       },
-      getResources: (detail) => {
+      getResources: async (detail) => {
         if (!detail.lngLat) return null;
         const inp = climateInputs(data.worldSettings);
         const overrides = (detail.resources ?? {}) as Record<string, number>;
-        return deriveCityResources(detail.lngLat, overrides, data.terrainRegions, inp);
+        return deriveCityResources(detail.lngLat, overrides, inp);
       },
       canEdit: () => hasBackend(),
       setStatus,
@@ -340,6 +344,7 @@ async function boot(): Promise<void> {
       graph = rebuildGraph(next);
       updateFeatureData(map, next);
       climate.recompute(next);
+      rivers.recompute(next);
       if (wiki.isOpen()) wiki.rerenderActive();
       if (terrainPanel.isOpen()) terrainPanel.refresh();
       if (routePanel.isOpen()) routePanel.refresh();
@@ -357,7 +362,7 @@ async function boot(): Promise<void> {
 
     // Layers panel: toggle terrain / territories / routes / labels / climate.
     const layersEl = document.getElementById("layers-panel");
-    if (layersEl) mountLayersPanel(layersEl, map, climate);
+    if (layersEl) mountLayersPanel(layersEl, map, climate, rivers);
 
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");

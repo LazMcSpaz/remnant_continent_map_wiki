@@ -1,27 +1,55 @@
-// DERIVED: city resource baselines.
+// DERIVED: city resource baselines — fully model-driven.
 //
-// The README's model: a city's resources are *derived from geography* (sun,
-// wind, water, growing season), and manual overrides act as **pins** that
-// survive recomputation and are shown as authored rather than computed. This
-// module implements exactly that — it never stores anything.
+// The README's model: a city's resources are *derived from geography*. Rather
+// than require hand-authored terrain regions, the baselines now come straight
+// from the **climate model**: the DEM-sampled elevation, the rules-derived
+// climate (temperature, precipitation, wind, effective latitude), and the
+// resulting biome. Manual overrides still act as **pins** that survive
+// recomputation. Nothing is stored.
 //
-//   terrain region (authored) + climate (derived)  ──►  resource baseline
-//   baseline + resource_overrides (authored pins)   ──►  effective value
+//   sampled climate (DEM + rules)                ──►  resource baseline
+//   baseline + resource_overrides (authored pins) ──►  effective value
 //
-// Cascade: editing the terrain beneath a city, or scrubbing the season, changes
-// the baseline; a pin overrides it until the author removes the pin.
+// Cascade: move the pole or scrub the season → the climate changes → the
+// baselines change; a pin overrides until the author removes it.
 
-import type { TerrainRegionGeo, LandCover } from "../state/db-types";
+import type { LandCover } from "../state/db-types";
 import type { ClimateInputs } from "./climate";
-import { regionAt, temperatureAt, growingWarmth } from "./climate";
+import { cropSuitabilityAt } from "./climate";
+import { sampleClimate, type SampledClimate } from "./climate-sample";
+import { getHydrology } from "./hydrology";
 
 export const RESOURCE_KINDS = ["food", "water", "energy", "production"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 
-/** Land-cover support for cultivation (food) — shared shape with crops. */
-const LAND_COVER_CROP: Record<LandCover, number> = {
-  cropland: 1.0, grassland: 0.8, wetland: 0.5, forest: 0.45, tundra: 0.15,
-  desert: 0.1, barren: 0.05, urban: 0.3, water: 0,
+const DEG = Math.PI / 180;
+
+/** Natural land cover implied by each biome (drives crop + buildability). */
+const BIOME_LAND_COVER: Record<string, LandCover> = {
+  water: "water",
+  ice: "barren",
+  tundra: "tundra",
+  desert: "desert",
+  grassland: "grassland",
+  woodland: "grassland",
+  forest: "forest",
+  savanna: "grassland",
+  rainforest: "forest",
+};
+
+/** Stylized soil fertility (0..100) by biome. Temperate grassland (the real
+ *  Midwest's mollisols) is the most fertile; rainforest soils are leached;
+ *  desert/tundra/ice are poor. */
+const BIOME_FERTILITY: Record<string, number> = {
+  water: 0,
+  ice: 5,
+  tundra: 20,
+  desert: 15,
+  grassland: 88,
+  woodland: 62,
+  forest: 72,
+  savanna: 48,
+  rainforest: 45,
 };
 
 /** Land-cover support for development/production (buildable land). */
@@ -30,11 +58,18 @@ const LAND_COVER_BUILD: Record<LandCover, number> = {
   forest: 0.45, tundra: 0.3, wetland: 0.2, water: 0,
 };
 
+/** Prevailing-wind-band base windiness (0..100) for energy. */
+const WIND_BAND_BASE: Record<string, number> = {
+  "westerlies": 70,
+  "trade easterlies": 50,
+  "polar easterlies": 60,
+};
+
 const clamp100 = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 
 export interface ResourceValue {
   kind: ResourceKind;
-  /** Geography-derived baseline (0..100). null when no terrain covers the city. */
+  /** Geography-derived baseline (0..100). null only when no coordinates. */
   baseline: number | null;
   /** Authored pin (resource_overrides), if set. */
   pinned: number | null;
@@ -46,31 +81,32 @@ export interface ResourceValue {
 
 export interface CityResources {
   values: Record<ResourceKind, ResourceValue>;
-  /** The region the baselines were computed from, if any. */
+  /** Short description of where the baselines came from (the biome). */
   regionName: string | null;
 }
 
 /**
- * Compute a city's resource baselines from the terrain region beneath it and
- * the climate, then fold in authored overrides as pins.
+ * Compute a city's resource baselines from the sampled climate beneath it, then
+ * fold in authored overrides as pins.
  *
- * - food:       crop suitability at the city (warmth × soil × water × cover)
- * - water:      surface-water availability
- * - energy:     wind + solar exposure (mean)
- * - production: buildable land (land cover × gentle-slope bonus)
+ * - food:       crop suitability (growing-season warmth × moisture × soil × cover)
+ * - water:      rainfall + proximity to water (100 if submerged)
+ * - energy:     insolation (by latitude, less when cloudy) + wind (band/coast/elevation)
+ * - production: buildable land (cover × elevation/ruggedness factor)
  */
-export function deriveCityResources(
+export async function deriveCityResources(
   lngLat: [number, number],
   overrides: Record<string, number>,
-  regions: TerrainRegionGeo[],
   inp: ClimateInputs,
-): CityResources {
-  const region = regionAt(lngLat, regions);
-  const baseline = region ? baselinesFor(region, lngLat, inp) : null;
+): Promise<CityResources> {
+  const sc = await sampleClimate(lngLat, inp);
+  const hydro = await getHydrology(inp);
+  const river = hydro.waterAt(lngLat[0], lngLat[1]); // 0..100 nearby river strength
+  const baseline = baselinesFor(lngLat, sc, river, inp);
 
   const values = {} as Record<ResourceKind, ResourceValue>;
   for (const kind of RESOURCE_KINDS) {
-    const base = baseline ? baseline[kind] : null;
+    const base = baseline[kind];
     const pin = typeof overrides[kind] === "number" ? overrides[kind] : null;
     values[kind] = {
       kind,
@@ -80,33 +116,54 @@ export function deriveCityResources(
       isPinned: pin != null,
     };
   }
-  return { values, regionName: region?.name ?? null };
+  const regionName = sc.isWater ? "submerged (below sea level)" : sc.biome.label.toLowerCase();
+  return { values, regionName };
 }
 
 function baselinesFor(
-  region: TerrainRegionGeo,
   lngLat: [number, number],
+  sc: SampledClimate,
+  river: number,
   inp: ClimateInputs,
 ): Record<ResourceKind, number> {
-  const elev = region.elevation_m ?? 0;
-  const tempC = temperatureAt(lngLat, elev, inp);
-  const warmth = growingWarmth(tempC) / 100; // 0..1
+  const elev = sc.elevationM ?? 0;
+  const biome = sc.biome.id;
+  const landCover = BIOME_LAND_COVER[biome] ?? "grassland";
+  const fertility = BIOME_FERTILITY[biome] ?? 50;
 
-  const fertility = (region.soil_fertility ?? 50) / 100;
-  const water = (region.surface_water ?? 50) / 100;
-  const cover = region.land_cover ? LAND_COVER_CROP[region.land_cover] : 0.5;
-  const build = region.land_cover ? LAND_COVER_BUILD[region.land_cover] : 0.5;
-  const wind = (region.wind_exposure ?? 50) / 100;
-  const solar = (region.solar_exposure ?? 50) / 100;
+  // Surface water available to crops: rainfall + a nearby river (irrigation) +
+  // coastal/lake proximity. A river lets a dry region farm (the Nile effect).
+  const surfaceWater = sc.isWater
+    ? 100
+    : clamp100(sc.precip * 0.55 + river * 0.7 + sc.maritime * 45);
 
-  // Steep land is harder to build on.
-  const slope = region.slope_deg ?? 0;
-  const slopeFactor = Math.max(0.3, 1 - slope / 30); // 1 flat → 0.3 at 30°+
+  // Food via the shared crop core, at the city's own coordinates, using the
+  // model-derived soil/cover/water and the same sampled precipitation.
+  const food = sc.isWater
+    ? 0
+    : cropSuitabilityAt(
+        lngLat,
+        { elevationM: elev, soilFertility: fertility, surfaceWater, landCover, precip: sc.precip },
+        inp,
+      ).suitability;
 
-  return {
-    food: clamp100(warmth * fertility * water * cover * 100),
-    water: clamp100(water * 100),
-    energy: clamp100(((wind + solar) / 2) * 100),
-    production: clamp100(build * slopeFactor * 100),
-  };
+  // Water resource: rainfall + rivers + coastal proximity; 100 when submerged.
+  const water = sc.isWater
+    ? 100
+    : clamp100(sc.precip * 0.5 + river * 0.75 + sc.maritime * 45);
+
+  // Energy: solar insolation (peaks at the new equator, dimmed by cloud/rain) +
+  // wind (by prevailing band, stronger on coasts and at elevation).
+  const solarBase = Math.max(0, Math.cos(sc.effLat * DEG)); // 1 at new equator → 0 at poles
+  const solar = clamp100(solarBase * 100 * (1 - sc.precip / 260));
+  const windBand = WIND_BAND_BASE[sc.windBand] ?? 55;
+  const wind = clamp100(windBand + sc.maritime * 20 + Math.min(15, (elev / 2000) * 15));
+  const energy = clamp100((solar + wind) / 2);
+
+  // Production: buildable land. Lowlands build easily; high/rugged ground less.
+  const build = LAND_COVER_BUILD[landCover];
+  const elevFactor = Math.max(0.3, 1 - Math.max(0, elev - 1000) / 4000);
+  const production = sc.isWater ? 0 : clamp100(build * 100 * elevFactor);
+
+  return { food, water, energy, production };
 }

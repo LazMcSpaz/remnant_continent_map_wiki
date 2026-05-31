@@ -338,6 +338,37 @@ body {
   flex: none;
 }
 
+/* ---- Map marker hover popup ---------------------------------------------- */
+/* MapLibre's default popup is white with no explicit text colour, so it
+   inherited the dark theme's near-white text and was invisible. Theme it. */
+.maplibregl-popup-content {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  padding: 0.4rem 0.6rem;
+}
+.maplibregl-popup-content small {
+  color: var(--text-muted);
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--panel);
+}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--panel);
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--panel);
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--panel);
+}
+
 /* ---- Login gate (private atlas) ------------------------------------------ */
 .login-gate {
   position: fixed;

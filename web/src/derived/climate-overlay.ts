@@ -26,6 +26,7 @@ import {
   temperatureAt,
   seaLevelAt,
   biomeAt,
+  cToF,
   BIOME_LEGEND,
   type ClimateInputs,
   type GridMetric,
@@ -81,8 +82,10 @@ function hex(c: RGB): string {
 
 export const TEMP_LEGEND: RampLegend = {
   title: "Temperature",
-  unit: "°C",
-  stops: TEMP_STOPS.map((s) => ({ v: s.v, color: hex(s.c) })),
+  unit: "°F",
+  // The colour ramp is keyed in °C, but the legend reads in °F. A linear
+  // conversion preserves the gradient positions, so only the labels change.
+  stops: TEMP_STOPS.map((s) => ({ v: Math.round(cToF(s.v)), color: hex(s.c) })),
 };
 export const PRECIP_LEGEND: RampLegend = {
   title: "Precipitation",

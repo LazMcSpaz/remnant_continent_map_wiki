@@ -98,6 +98,27 @@ The whole route system — segments, classes, breaks, and corridors — is inclu
 in Save / Export and restored on Import (ids remapped, breaks re-snapped onto
 their routes, corridor membership rebuilt).
 
+## Hydrology (DEM flow accumulation)
+
+Rivers aren't authored either — they fall out of the terrain. `src/derived/
+hydrology.ts` samples the DEM over the climate extent and runs real drainage:
+
+1. **fill depressions** (priority-flood) so every land cell has a downhill path
+   to an outlet — the post-shift sea (cells below the shifted sea level) or the
+   grid edge;
+2. take the **drainage tree** the flood traversal defines (each cell's receiver
+   is the cell it was first reached from — always downhill, flats resolved);
+3. **accumulate flow downstream weighted by rainfall** (from the climate rules),
+   so a river's strength is the rain gathered upstream — big rivers form in wet
+   basins, arid drainages stay thin.
+
+Because rivers drain to the *post-shift* sea and are fed by the *shifted*
+rainfall, the network reflects the new world, not the old. The **Rivers** layer
+(Layers panel) shows it as a soft drainage raster, and the result feeds the
+city **water** resource and crop **irrigation** (a city on a strong channel can
+farm a drier climate — the Nile effect). Computed once and cached, keyed on the
+pole + sea level (season-independent).
+
 ## Rule-based climate (Phase 2)
 
 Climate is **computed by rules**, not authored as polygons. `src/derived/climate.ts`
@@ -111,6 +132,22 @@ and derives **temperature, precipitation, and prevailing wind** for any point:
   → poles dry) with an orographic lift;
 - wind band (trade easterlies / westerlies / polar easterlies) oriented to the
   new axis.
+
+The **map itself opens oriented to the new North Pole** (the new-north direction
+points "up"), not geographic north, so the world reads in its post-shift frame.
+A single bearing can only be exact at one point on a sphere, so it's computed at
+the area-of-interest centre; the compass control resets to true north if wanted.
+
+**Agricultural potential** is deliberately agronomic, not "hotter is better":
+warmth is scored on the **growing-season** temperature (the warm extreme of the
+annual swing, so it doesn't flip when you scrub the season) with an **optimum
+band** (too cold below ~5 °C, a temperate optimum ~20–28 °C, heat stress above),
+and moisture comes from the rules **precipitation** (plus authored
+rivers/irrigation) with a well-watered optimum and a mild waterlogging penalty.
+The upshot: the mild, wet new Midwest (temperate forest) scores as prime
+farmland, while frozen highland and the scorching new tropics do not — the same
+`cropSuitabilityAt` core feeds both a city's food resource and a terrain
+region's crop score, so they never diverge.
 
 It also models the **inundation**: a rapid shift re-forms the equatorial bulge
 around the new equator, so sea level stands higher there — old-Arctic lowlands
@@ -181,11 +218,15 @@ gets a selection halo. Tabs (arrow keys navigate the tablist; Esc closes):
 
 - **Overview** — type, new/old-world names, faction, coordinates. *Editable.*
 - **Population** — authored population stat. *Editable.*
-- **Resources** — **derived from geography** (food from crop suitability, water
-  from surface water, energy from wind+solar, production from buildable land),
-  with `resource_overrides` shown as **pins** (📌) that override the baseline and
-  survive recompute. A baseline tick marks where geography sits under a pin.
-  Edit to pin/unpin; blank = use the baseline. *Recomputes with terrain/season.*
+- **Resources** — **derived from the climate model**, no authored terrain
+  required: each city is sampled (DEM elevation + the climate rules + resulting
+  biome) and the four resources fall out of it — **food** from crop suitability
+  (growing-season warmth × rainfall/irrigation moisture × biome soil & cover),
+  **water** from rainfall + water proximity, **energy** from insolation (by
+  latitude) + wind (by band/coast/elevation), **production** from buildable
+  cover × elevation. `resource_overrides` show as **pins** (📌) that override the
+  baseline and survive recompute; a tick marks where the model sits under a pin.
+  Edit to pin/unpin; blank = use the baseline. *Recomputes when the pole moves.*
 - **Connections** — routes touching this location, from the derived network
   graph, with length, travel time, and intact/damaged/severed status. Rows that
   lead to another city are **clickable** — they fly to and open that city.

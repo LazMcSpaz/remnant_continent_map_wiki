@@ -9,6 +9,7 @@
 
 import type { TerrainRegionGeo, LandCover, SoilDrainage } from "../state/db-types";
 import type { RegionDerived } from "../derived/climate";
+import { formatTempF } from "../derived/climate";
 import { updateTerrainFields, type TerrainFields } from "../layers/features";
 
 /** The panel's window into app state — implemented by main.ts. */
@@ -139,7 +140,7 @@ export class TerrainPanel {
     }
     box.append(
       el("div", { className: "terra-derived-row" }, [
-        el("span", {}, [`${d.tempC.toFixed(1)} °C`]),
+        el("span", {}, [formatTempF(d.tempC)]),
         el("span", { className: "wiki-muted" }, ["mean temp"]),
       ]),
       el("div", { className: "terra-derived-row" }, [
