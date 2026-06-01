@@ -9,7 +9,7 @@ import type { RiversOverlay } from "./rivers-overlay";
 import type { SimController } from "../sim/sim-controller";
 
 interface Row {
-  id: LayerGroup | "climate" | "water" | "rivers" | "sim" | "chokepoints" | "world";
+  id: LayerGroup | "climate" | "water" | "rivers" | "sim" | "chokepoints" | "world" | "coast";
   label: string;
   swatch: string;
   /** Initial checked state. */
@@ -17,6 +17,7 @@ interface Row {
 }
 
 const ROWS: Row[] = [
+  { id: "coast", label: "New coastline", swatch: "#3fa7d6", on: true },
   { id: "world", label: "World (drawn)", swatch: "#6f8f4a", on: false },
   { id: "sim", label: "Simulation (pressure)", swatch: "#d23b3b", on: false },
   { id: "chokepoints", label: "Chokepoints", swatch: "#d23b3b", on: false },
@@ -37,6 +38,7 @@ export function mountLayersPanel(
   sim: SimController,
   onChokepoint: (visible: boolean) => void,
   onWorld: (visible: boolean) => void,
+  onCoast: (visible: boolean) => void,
 ): void {
   container.replaceChildren();
   const heading = document.createElement("h2");
@@ -65,6 +67,7 @@ export function mountLayersPanel(
       else if (row.id === "sim") sim.setVisible(cb.checked);
       else if (row.id === "chokepoints") onChokepoint(cb.checked);
       else if (row.id === "world") onWorld(cb.checked);
+      else if (row.id === "coast") onCoast(cb.checked);
       else setGroupVisible(map, row.id, cb.checked);
     });
 

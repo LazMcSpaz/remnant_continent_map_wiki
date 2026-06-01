@@ -15,13 +15,17 @@ cp .env.example .env   # optional — adjust the basemap source
 npm run dev            # http://localhost:5173
 ```
 
-With no `.env`, the app renders a **label-free** raster basemap (CARTO "Voyager —
-no labels"): real roads, highways, and rail — which the routes tool depends on —
-but **no place names**. This keeps the new-north rotation from flipping any text
-upside-down, and stops real-world labels from fighting the fiction (only our own
-new-world city names show, as upright HTML markers). Override the tile source
-(e.g. back to OSM) with `VITE_RASTER_TILE_URL`, or set `VITE_MAP_STYLE_URL` to a
-full MapLibre vector style. See `.env.example`.
+Basemap: set `VITE_MAPTILER_KEY` for a **MapTiler vector basemap** (recommended —
+clean, restylable cartography), or leave it unset to fall back to a label-free
+CARTO raster. With a vector basemap, `src/map/war-room-style.ts` reskins it into
+a **dark "war-room" look** on load: near-black land/water, thin cool-grey
+roads/rail, luminous waterways, and **all real labels hidden** (only our own
+new-world city names show, as upright HTML markers) — so authored features and
+the derived overlays glow on top. On top of that, the **New coastline** layer
+(`src/derived/coast-overlay.ts`, on by default) shades the **post-shift sea**
+over the real coastline with a luminous new-shore line, so the cataclysm's
+drowning reads against the present-day ground. See `.env.example` for all
+basemap options.
 
 ## Scripts
 
