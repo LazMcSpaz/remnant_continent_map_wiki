@@ -26,8 +26,9 @@ import {
 } from "./climate";
 import { elevationFromBlock, type DemBlock } from "./elevation";
 
-/** Grid resolution for tracing. Higher = finer edges, slower trace. */
-const GRID_W = 600;
+/** Grid resolution for tracing. Higher = finer edges, slower trace. Sized to
+ *  keep coastline detail across the wide climateExtent. */
+const GRID_W = 760;
 /** Chaikin smoothing iterations — turns the contour staircase into flowing
  *  curves so a traced lake/sea reads as a natural shape, not a polygon. */
 const SMOOTH_ITERS = 3;

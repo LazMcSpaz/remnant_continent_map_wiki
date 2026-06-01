@@ -65,32 +65,26 @@ can be added later without re-authoring data (see ADR 0003):
 Per the three-layer model, only these inputs are stored; temperature fields,
 growing-degree-days, and suitability scores are derived at runtime.
 
-## The drawn world (vector cartography)
+## The new coastline (vector)
 
-The **World (drawn)** layer renders the post-shift world as crisp **vector** map
-art instead of a stretched raster. `src/derived/world-vector.ts` *contours* the
-model fields into clean GeoJSON polygons (via `d3-contour`):
-
-- **coastline** — contour `elevation − post-shift sea level` at 0, so the land
-  polygon's outline *is* the new shoreline (drowned Gulf/Hudson Bay included),
-  drawn as a defined line with a soft halo;
-- **biomes** — contour each biome's indicator field into one clean multipolygon,
-  filled with its color — defined regions, not a blur;
-- **rivers** — the hydrology drainage tree emitted as polylines
-  (`HydroGrid.toRiverLines`), width scaling with flow.
-
-`src/derived/world-overlay.ts` styles and shows these. It's traced once from a
-loaded DEM block and cached. This replaces the soft raster look for the "world"
-view; the data-viz rasters (Climate zones, Sea level) remain for inspection.
+The **New coastline** layer draws the post-shift sea over the real vector
+basemap, so the cataclysm's drowning reads against accurate present-day ground.
+`src/derived/world-vector.ts` *contours* `post-shift sea level − elevation` at 0
+(via `d3-contour`) into a clean sea polygon, **Chaikin-smoothed** so shores flow
+naturally instead of stair-stepping, then `src/derived/coast-overlay.ts` fills it
+in the shared water color (matching real water) with a luminous new-shore line.
+Traced once from a loaded DEM block and cached. It's computed over
+`AOI.climateExtent`, which is widened to fill the working continent.
 
 ## Map extent & layers
 
 The map spans **continental North America** (pannable across Canada/US/Mexico)
 and opens zoomed on the Midwest corridor where the seed data lives. A **Layers**
-panel (top-left) toggles each feature group — World (drawn), Climate zones,
-Terrain, Territories, Routes, City names — on/off; hiding a layer also makes it
-un-clickable, so you can isolate exactly what you want to select without
-pixel-hunting between overlapping features.
+panel (top-left) toggles each feature group — New coastline, Climate zones,
+Terrain, Territories, Routes, City names (plus the Simulation & Chokepoints
+analysis layers) — on/off; hiding a layer also makes it un-clickable, so you can
+isolate exactly what you want to select without pixel-hunting between
+overlapping features.
 
 ## Routes
 
@@ -138,11 +132,11 @@ hydrology.ts` samples the DEM over the climate extent and runs real drainage:
    basins, arid drainages stay thin.
 
 Because rivers drain to the *post-shift* sea and are fed by the *shifted*
-rainfall, the network reflects the new world, not the old. The **Rivers** layer
-(Layers panel) shows it as a soft drainage raster, and the result feeds the
-city **water** resource and crop **irrigation** (a city on a strong channel can
-farm a drier climate — the Nile effect). Computed once and cached, keyed on the
-pole + sea level (season-independent).
+rainfall, the network reflects the new world, not the old. This drainage is no
+longer drawn as its own map layer (the basemap's real rivers are used for the
+visual), but it still feeds the city **water** resource and crop **irrigation**
+(a city on a strong channel can farm a drier climate — the Nile effect).
+Computed once and cached, keyed on the pole + sea level (season-independent).
 
 ## Rule-based climate (Phase 2)
 
@@ -196,11 +190,11 @@ run the rules at every raster pixel, and bake the result into image layers shown
 with linear resampling, so coastlines and zone boundaries are **smoothly
 interpolated** rather than blocky. The **Climate zones** layer (Layers panel) is
 switchable in the **Climate** control between **Temp / Rain / Biome**, with a
-**legend** that explains the active metric. A separate, independently toggleable
-**Sea level (flooded)** layer shades everything below the post-shift sea level,
-so the new coastline reads at a glance. Nothing is sampled until you turn a layer
-on; switching the metric just re-paints from the stored field, and a season
-scrub re-bakes from the cached DEM block (no re-fetch).
+**legend** that explains the active metric. (The drowned coast is now shown by
+the dedicated **New coastline** layer rather than a sea-level overlay here.)
+Nothing is sampled until you turn the layer on; switching the metric just
+re-paints from the stored field, and a season scrub re-bakes from the cached DEM
+block (no re-fetch).
 
 ## Flow simulation (Phase 4)
 
