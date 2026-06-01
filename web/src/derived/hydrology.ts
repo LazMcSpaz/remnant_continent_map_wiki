@@ -30,11 +30,21 @@ export interface HydroGrid {
   extent: [number, number, number, number];
   /** 0..100 river strength per cell (0 for ocean / non-channel land). */
   strength: Float32Array;
+  /** 1 where an inland basin holds water (a lake), else 0. Row-major W×H. */
+  lakeMask: Uint8Array;
   /** 0..100 river water available near a point (searches a small neighbourhood). */
   waterAt(lng: number, lat: number): number;
   /** Channels (strength ≥ minStrength) as drainage polylines for crisp drawing.
    *  Each segment is a cell→receiver link tagged with its strength. */
   toRiverLines(minStrength: number): FeatureCollection<LineString, { strength: number }>;
+  /** Channels as CONTINUOUS chains (headwater → outlet), each a list of
+   *  {lng,lat,strength} samples, for spline-smoothed, width-tapered rendering. */
+  toRiverChains(minStrength: number): RiverChain[];
+}
+
+/** A continuous river path from headwater toward its outlet. */
+export interface RiverChain {
+  points: Array<{ lng: number; lat: number; strength: number }>;
 }
 
 // --- a compact binary min-heap over cell indices, keyed by filled elevation ---
@@ -90,7 +100,8 @@ const NEIGHBORS: Array<[number, number]> = [
   [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
 ];
 
-function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
+function buildGrid(block: DemBlock, inp: ClimateInputs, sample?: (lng: number, lat: number) => number | null): HydroGrid {
+  const elevAt = sample ?? ((lng: number, lat: number) => elevationFromBlock(block, lng, lat));
   const [w, s, e, n] = AOI.climateExtent;
   const W = HYDRO_W;
   const H = Math.max(1, Math.round(W * ((n - s) / (e - w))));
@@ -108,7 +119,7 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
     for (let i = 0; i < W; i++) {
       const k = j * W + i;
       const lng = lngOf(i);
-      const raw = elevationFromBlock(block, lng, lat);
+      const raw = elevAt(lng, lat);
       const sea = seaLevelAt([lng, lat], inp);
       if (raw === null || raw <= sea) {
         ocean[k] = 1;
@@ -179,6 +190,20 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
     strength[k] = (Math.log(accum[k] + 1) / denom) * 100;
   }
 
+  // --- Inland lakes: a depression cell holds water where the priority-flood
+  // had to raise it above its real elevation (filled > elev), AND enough rain
+  // drains into the basin to keep it full (accum gate) — so a dry desert pit
+  // isn't a lake but a wet mountain basin is. lakeDepth (m) drives nothing but
+  // the polygon membership here; the surface reads as flat water.
+  const LAKE_MIN_DEPTH_M = 8; // ignore sub-grid noise puddles
+  const LAKE_MIN_INFLOW = 1.0; // rainfall units gathered into the cell
+  const lakeMask = new Uint8Array(N);
+  for (let k = 0; k < N; k++) {
+    if (ocean[k]) continue;
+    const depth = filled[k] - elev[k];
+    if (depth >= LAKE_MIN_DEPTH_M && accum[k] >= LAKE_MIN_INFLOW) lakeMask[k] = 1;
+  }
+
   const colOf = (lng: number) => Math.floor(((lng - w) / (e - w)) * W);
   const rowOf = (lat: number) => Math.floor(((n - lat) / (n - s)) * H);
 
@@ -187,6 +212,7 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
     h: H,
     extent: AOI.climateExtent,
     strength,
+    lakeMask,
     waterAt(lng, lat) {
       const ci = colOf(lng);
       const cj = rowOf(lat);
@@ -228,25 +254,79 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
       }
       return { type: "FeatureCollection", features };
     },
+    toRiverChains(minStrength) {
+      const sampleAt = (k: number) => {
+        const i = k % W;
+        const j = (k / W) | 0;
+        return {
+          lng: w + ((i + 0.5) / W) * (e - w),
+          lat: n - ((j + 0.5) / H) * (n - s),
+          strength: strength[k],
+        };
+      };
+      // A cell is a HEADWATER of a drawn channel if it's above threshold but no
+      // upstream cell feeds it above threshold. Walk each headwater down its
+      // receivers until it drops below threshold or hits the sea — one chain.
+      const feedsInto = new Int32Array(N).fill(0); // count of above-threshold donors
+      for (let k = 0; k < N; k++) {
+        if (ocean[k] || strength[k] < minStrength) continue;
+        const r = receiver[k];
+        if (r >= 0 && strength[r] >= minStrength) feedsInto[r]++;
+      }
+      const chains: RiverChain[] = [];
+      const visited = new Uint8Array(N);
+      for (let k = 0; k < N; k++) {
+        if (ocean[k] || strength[k] < minStrength || feedsInto[k] > 0) continue;
+        // Headwater: walk downstream.
+        const pts: RiverChain["points"] = [];
+        let cur = k;
+        let guard = 0;
+        while (cur >= 0 && !ocean[cur] && strength[cur] >= minStrength && guard++ < N) {
+          pts.push(sampleAt(cur));
+          visited[cur] = 1;
+          const r = receiver[cur];
+          // Continue into the receiver even if confluence (so trunks are whole).
+          cur = r;
+        }
+        // Include the outlet/confluence point for a clean join.
+        if (cur >= 0) pts.push(sampleAt(cur));
+        if (pts.length >= 2) chains.push({ points: pts });
+      }
+      return chains;
+    },
   };
 }
 
 // --- Cache: recompute only when an input that changes drainage moves. ---
 const cache = new Map<string, Promise<HydroGrid>>();
 
-function keyFor(inp: ClimateInputs): string {
-  // Drainage depends on the DEM + sea level (both pole-driven); it's effectively
-  // season-independent, so the season is left out to avoid recomputing on scrub.
-  return [inp.pole[0], inp.pole[1], inp.seaLevelM].join(",");
+function keyFor(inp: ClimateInputs, editsKey: string): string {
+  // Drainage depends on the DEM + sea level (both pole-driven) + any terrain
+  // edits; season-independent, so season is left out to avoid recompute on scrub.
+  return [inp.pole[0], inp.pole[1], inp.seaLevelM, editsKey].join(",");
 }
 
-/** Compute (or return cached) hydrology for the current climate inputs. */
-export function getHydrology(inp: ClimateInputs): Promise<HydroGrid> {
-  const key = keyFor(inp);
+/** A function that turns a loaded DEM block into the composite elevation sampler
+ *  the hydrology should use (base DEM + detail noise + edits). */
+export type HydroSamplerFactory = (block: DemBlock) => (lng: number, lat: number) => number | null;
+
+/**
+ * Compute (or return cached) hydrology. With no options, drains the raw DEM
+ * (the original behaviour). Pass `editsKey` + `sampler` to drain the composite
+ * field instead — so terrain edits reroute the rivers. Keyed so each distinct
+ * edit set caches separately.
+ */
+export function getHydrology(
+  inp: ClimateInputs,
+  opts: { editsKey?: string; sampler?: HydroSamplerFactory } = {},
+): Promise<HydroGrid> {
+  const key = keyFor(inp, opts.editsKey ?? "");
   const hit = cache.get(key);
   if (hit) return hit;
   const [w, s, e, n] = AOI.climateExtent;
-  const p = loadDemBlock(w, s, e, n).then((block) => buildGrid(block, inp));
+  const p = loadDemBlock(w, s, e, n).then((block) =>
+    buildGrid(block, inp, opts.sampler ? opts.sampler(block) : undefined),
+  );
   cache.set(key, p);
   return p;
 }

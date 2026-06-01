@@ -1,31 +1,42 @@
-// Drowned-coast overlay: the post-shift sea drawn OVER the real basemap, so the
-// cataclysm's new shoreline reads against the present-day ground. Two layers:
+// Drowned-coast + rivers overlay. The post-shift sea AND the rivers drawn OVER
+// the real basemap, all derived from one composite elevation field (base DEM +
+// procedural detail noise + brush edits), so they stay consistent and carry
+// fine detail at deep zoom. Layers:
 //
-//   • a translucent fill of the post-shift sea (incl. newly-flooded lowlands),
-//     deep enough to read as water on the dark war-room base;
-//   • a luminous "new shore" line on the sea boundary — the literal new coast.
+//   • sea fill — post-shift sea incl. newly-flooded lowlands, shared water color;
+//   • new-shore line — the post-shift coastline (noise-detailed, smoothed);
+//   • rivers — meandering, spline-smoothed, width-tapered polylines.
 //
-// Traced once from a DEM block via world-vector.ts and cached. Self-contained
-// (own source/layers, inserted above the basemap but below city markers), so
-// layers/ is untouched. This is the cleanest way to honour the setting on top
-// of an accurate vector basemap: real geography + our flood, no blobby raster.
+// Self-contained (own sources/layers, above the basemap, below city markers).
+// Recompute (Recalculate) re-derives everything from the current edits.
 
 import type { Map as MlMap, GeoJSONSource } from "maplibre-gl";
-import type { FeatureCollection } from "geojson";
+import type { FeatureCollection, LineString } from "geojson";
 import { AOI } from "../config";
 import type { FeatureData } from "../layers/features";
 import { climateInputs, type ClimateInputs } from "./climate";
 import { loadDemBlock, type DemBlock } from "./elevation";
-import { traceWorld } from "./world-vector";
+import { traceWorld, lakePolygons } from "./world-vector";
+import { getHydrology } from "./hydrology";
+import { renderRivers } from "./river-render";
+import { makeCompositeSampler, type ElevationEdit } from "./terrain";
 import { WATER_COLOR } from "../map/war-room-style";
 
 const SEA_SRC = "rc-coast-sea";
 const SEA_FILL = "rc-coast-sea-fill";
 const SHORE_LINE = "rc-coast-shore";
+const LAKE_SRC = "rc-coast-lake";
+const LAKE_FILL = "rc-coast-lake-fill";
+const LAKE_LINE = "rc-coast-lake-shore";
+const RIVER_SRC = "rc-coast-river";
+const RIVER_LINE = "rc-coast-river-line";
 
 // New water uses the SAME color as existing water (war-room WATER_COLOR), at
 // full opacity, so drowned seas are indistinguishable from real water bodies.
 const SHORE_COLOR = "#3fa7d6";
+const RIVER_COLOR = "#3a7fa0";
+/** Hydrology strength below which a channel isn't drawn (creek vs sheet-flow). */
+const RIVER_MIN = 40;
 
 type StatusFn = (msg: string, kind?: "info" | "error") => void;
 
@@ -36,6 +47,7 @@ export class CoastOverlay {
   private added = false;
   private block: DemBlock | null = null;
   private baking: Promise<void> | null = null;
+  private edits: ElevationEdit[] = [];
 
   constructor(map: MlMap, onStatus: StatusFn = () => {}) {
     this.map = map;
@@ -46,6 +58,12 @@ export class CoastOverlay {
     return this.visible;
   }
 
+  /** Replace the elevation edits the composite field uses (terrain brush). The
+   *  next build()/Recalculate re-derives coast + rivers from base DEM + these. */
+  setEdits(edits: ElevationEdit[]): void {
+    this.edits = edits;
+  }
+
   setVisible(visible: boolean, data?: FeatureData): void {
     this.visible = visible;
     if (visible && !this.added) {
@@ -54,12 +72,12 @@ export class CoastOverlay {
     }
     if (!this.added) return;
     const v = visible ? "visible" : "none";
-    for (const id of [SEA_FILL, SHORE_LINE]) {
+    for (const id of [SEA_FILL, SHORE_LINE, LAKE_FILL, LAKE_LINE, RIVER_LINE]) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, "visibility", v);
     }
   }
 
-  /** (Re)trace the post-shift sea and show it. Cheap after first DEM load. */
+  /** (Re)derive sea + rivers from the composite field and show them. */
   async build(data: FeatureData): Promise<void> {
     if (this.baking) return this.baking;
     this.baking = this.bake(climateInputs(data.worldSettings)).finally(() => {
@@ -70,26 +88,48 @@ export class CoastOverlay {
 
   private async bake(inp: ClimateInputs): Promise<void> {
     const [w, s, e, n] = AOI.climateExtent;
-    this.onStatus("Tracing the new coastline…");
+    this.onStatus("Recomputing terrain (coast & rivers)…");
     try {
-      // Higher zoom + tile budget → sharper coastline detail for the trace,
-      // even across the wide extent (loadDemBlock lowers zoom to fit the budget).
+      // Higher zoom + tile budget → sharper detail; loadDemBlock fits the budget.
       if (!this.block) this.block = await loadDemBlock(w, s, e, n, 7, 900);
-      const { sea } = traceWorld(this.block, inp);
-      this.render(sea as FeatureCollection);
-      this.onStatus("New coastline drawn.");
+      // The one composite field everything reads: DEM + detail noise + edits.
+      const sampler = makeCompositeSampler(this.block, this.edits);
+      const { sea } = traceWorld(this.block, inp, sampler);
+
+      // Rivers from hydrology over the SAME composite field, so edits reroute
+      // them. Keyed by the edits so each sculpt caches distinctly.
+      const editsKey = this.edits.map((ed) => `${ed.lng.toFixed(3)},${ed.lat.toFixed(3)},${ed.radiusKm},${ed.deltaM}`).join("|");
+      const hydro = await getHydrology(inp, {
+        editsKey,
+        sampler: (blk) => makeCompositeSampler(blk, this.edits),
+      });
+      const rivers = renderRivers(hydro.toRiverChains(RIVER_MIN), RIVER_MIN);
+
+      // Inland lakes: filled basins that hold water, smoothed like the coast.
+      const lakes = lakePolygons(hydro.lakeMask, hydro.w, hydro.h);
+
+      this.render(sea as FeatureCollection, rivers, lakes as FeatureCollection);
+      this.onStatus("Terrain recomputed.");
     } catch (err) {
       this.onStatus(err instanceof Error ? err.message : String(err), "error");
     }
   }
 
-  private render(sea: FeatureCollection): void {
+  private render(
+    sea: FeatureCollection,
+    rivers: FeatureCollection<LineString>,
+    lakes: FeatureCollection,
+  ): void {
     if (this.added) {
       (this.map.getSource(SEA_SRC) as GeoJSONSource | undefined)?.setData(sea);
+      (this.map.getSource(RIVER_SRC) as GeoJSONSource | undefined)?.setData(rivers);
+      (this.map.getSource(LAKE_SRC) as GeoJSONSource | undefined)?.setData(lakes);
       return;
     }
     const before = this.map.getLayer("rc-location-circle") ? "rc-location-circle" : undefined;
     this.map.addSource(SEA_SRC, { type: "geojson", data: sea });
+    this.map.addSource(LAKE_SRC, { type: "geojson", data: lakes });
+    this.map.addSource(RIVER_SRC, { type: "geojson", data: rivers });
     const vis = this.visible ? "visible" : "none";
     this.map.addLayer(
       {
@@ -98,6 +138,43 @@ export class CoastOverlay {
         source: SEA_SRC,
         layout: { visibility: vis },
         paint: { "fill-color": WATER_COLOR, "fill-opacity": 1 },
+      },
+      before,
+    );
+    // Inland lakes: same water color + a shore line, like the coast.
+    this.map.addLayer(
+      {
+        id: LAKE_FILL,
+        type: "fill",
+        source: LAKE_SRC,
+        layout: { visibility: vis },
+        paint: { "fill-color": WATER_COLOR, "fill-opacity": 1 },
+      },
+      before,
+    );
+    this.map.addLayer(
+      {
+        id: LAKE_LINE,
+        type: "line",
+        source: LAKE_SRC,
+        layout: { visibility: vis, "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": SHORE_COLOR, "line-width": 1, "line-opacity": 0.8, "line-blur": 0.4 },
+      },
+      before,
+    );
+    // Rivers above the water fills (so a river reads up to the shore) but below
+    // the shore lines + markers. Width tapers with flow strength.
+    this.map.addLayer(
+      {
+        id: RIVER_LINE,
+        type: "line",
+        source: RIVER_SRC,
+        layout: { visibility: vis, "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": RIVER_COLOR,
+          "line-opacity": 0.9,
+          "line-width": ["interpolate", ["linear"], ["get", "strength"], 40, 0.5, 100, 4],
+        },
       },
       before,
     );

@@ -111,11 +111,18 @@ function projectRings(coords: Position[][][], grid: Grid): Position[][][] {
   );
 }
 
-/** Trace the post-shift world from a loaded DEM block. */
-export function traceWorld(block: DemBlock, inp: ClimateInputs): WorldVectors {
+/** Trace the post-shift world from a loaded DEM block. An optional composite
+ *  sampler (base DEM + detail noise + edits) supersedes the raw block, so the
+ *  coastline carries the same fine ruggedness as the rest of the terrain. */
+export function traceWorld(
+  block: DemBlock,
+  inp: ClimateInputs,
+  sample?: (lng: number, lat: number) => number | null,
+): WorldVectors {
   const grid = makeGrid();
   const { w: W, h: H } = grid;
   const n = W * H;
+  const elevAt = sample ?? ((lng: number, lat: number) => elevationFromBlock(block, lng, lat));
 
   // Sample the fields once across the grid.
   const submerged = new Float64Array(n); // seaLevel − elev: >0 underwater
@@ -125,7 +132,7 @@ export function traceWorld(block: DemBlock, inp: ClimateInputs): WorldVectors {
   for (let row = 0; row < H; row++) {
     for (let col = 0; col < W; col++) {
       const [lng, lat] = grid.toLngLat(col + 0.5, row + 0.5);
-      const raw = elevationFromBlock(block, lng, lat);
+      const raw = elevAt(lng, lat);
       const elev = raw ?? 0;
       const sea = seaLevelAt([lng, lat], inp);
       const isWater = raw !== null && elev <= sea;
@@ -194,4 +201,38 @@ export function traceWorld(block: DemBlock, inp: ClimateInputs): WorldVectors {
   }
 
   return { land, sea, biomes };
+}
+
+/**
+ * Contour an inland-lake mask (W×H, 1 = water) into smoothed GeoJSON polygons.
+ * Independent of the trace grid — it builds a grid matching the mask's own
+ * dimensions (the hydrology grid). Chaikin-smoothed like the coastline, so a
+ * lake reads as a natural body of water rather than a blocky basin.
+ */
+export function lakePolygons(
+  mask: Uint8Array,
+  w: number,
+  h: number,
+): FeatureCollection<MultiPolygon | Polygon> {
+  const [west, south, east, north] = AOI.climateExtent;
+  const grid: Grid = {
+    w,
+    h,
+    toLngLat(col, row) {
+      return [west + (col / w) * (east - west), north - (row / h) * (north - south)];
+    },
+  };
+  const field = new Float64Array(w * h);
+  let any = false;
+  for (let i = 0; i < w * h; i++) {
+    field[i] = mask[i] ? 1 : 0;
+    if (mask[i]) any = true;
+  }
+  if (!any) return { type: "FeatureCollection", features: [] };
+  const c = contours().size([w, h]).thresholds([0.5])(Array.from(field));
+  const geom: MultiPolygon = {
+    type: "MultiPolygon",
+    coordinates: c.length ? projectRings(c[0].coordinates, grid) : [],
+  };
+  return { type: "FeatureCollection", features: [{ type: "Feature", geometry: geom, properties: {} }] };
 }

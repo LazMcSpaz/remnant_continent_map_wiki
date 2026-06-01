@@ -16,6 +16,8 @@ import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { CoastOverlay } from "./derived/coast-overlay";
+import { TerrainBrush } from "./derived/terrain-brush";
+import { mountTerrainBrushControl } from "./notes/terrain-brush-control";
 import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { IsochroneOverlay } from "./derived/isochrone-overlay";
 import { mountIsochroneControl, type IsochroneHost } from "./notes/isochrone-control";
@@ -43,6 +45,7 @@ import { growingWarmth } from "./derived/climate";
 import { deriveCityResources } from "./derived/resources";
 import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
+import { createElevationEdit, deleteElevationEdit } from "./layers/features";
 
 const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
 function seasonName(season: number): string {
@@ -366,6 +369,41 @@ async function boot(): Promise<void> {
       document.getElementById("isochrone-panel") ?? document.createElement("div"),
       isochroneHost,
     );
+
+    // Terrain brush: sculpt elevation, persist on Recalculate, reflow water.
+    const terrainBrush = new TerrainBrush(map, {
+      initialEdits: data.elevationEdits,
+      recalculate: async (edits) => {
+        // Persist: new edits (local "edit-" ids) are inserted; edits dropped
+        // since the last save are deleted. Then reload so ids are canonical.
+        const prev = new Map(data.elevationEdits.map((e) => [e.id, e]));
+        const keep = new Set(edits.map((e) => e.id));
+        try {
+          for (const e of edits) {
+            if (!prev.has(e.id)) await createElevationEdit(e);
+          }
+          for (const e of data.elevationEdits) {
+            if (!keep.has(e.id)) await deleteElevationEdit(e.id);
+          }
+          data = await loadFeatures();
+        } catch (err) {
+          setStatus(err instanceof Error ? err.message : String(err), "error");
+        }
+        // Re-derive water from the canonical edits and repaint.
+        coast.setEdits(data.elevationEdits);
+        coast.setVisible(true);
+        await coast.build(data);
+        return data.elevationEdits;
+      },
+      onStatus: setStatus,
+    });
+    const brushEl = document.getElementById("terrain-brush-panel");
+    if (brushEl && hasBackend()) mountTerrainBrushControl(brushEl, terrainBrush);
+    // Build the world with any persisted edits on first load.
+    if (data.elevationEdits.length > 0) {
+      coast.setEdits(data.elevationEdits);
+      void coast.build(data);
+    }
 
     // Esc ends corridor add-members mode.
     document.addEventListener("keydown", (e) => {
