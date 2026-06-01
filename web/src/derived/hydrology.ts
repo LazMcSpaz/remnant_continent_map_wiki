@@ -98,7 +98,8 @@ const NEIGHBORS: Array<[number, number]> = [
   [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
 ];
 
-function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
+function buildGrid(block: DemBlock, inp: ClimateInputs, sample?: (lng: number, lat: number) => number | null): HydroGrid {
+  const elevAt = sample ?? ((lng: number, lat: number) => elevationFromBlock(block, lng, lat));
   const [w, s, e, n] = AOI.climateExtent;
   const W = HYDRO_W;
   const H = Math.max(1, Math.round(W * ((n - s) / (e - w))));
@@ -116,7 +117,7 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
     for (let i = 0; i < W; i++) {
       const k = j * W + i;
       const lng = lngOf(i);
-      const raw = elevationFromBlock(block, lng, lat);
+      const raw = elevAt(lng, lat);
       const sea = seaLevelAt([lng, lat], inp);
       if (raw === null || raw <= sea) {
         ocean[k] = 1;
@@ -282,19 +283,33 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
 // --- Cache: recompute only when an input that changes drainage moves. ---
 const cache = new Map<string, Promise<HydroGrid>>();
 
-function keyFor(inp: ClimateInputs): string {
-  // Drainage depends on the DEM + sea level (both pole-driven); it's effectively
-  // season-independent, so the season is left out to avoid recomputing on scrub.
-  return [inp.pole[0], inp.pole[1], inp.seaLevelM].join(",");
+function keyFor(inp: ClimateInputs, editsKey: string): string {
+  // Drainage depends on the DEM + sea level (both pole-driven) + any terrain
+  // edits; season-independent, so season is left out to avoid recompute on scrub.
+  return [inp.pole[0], inp.pole[1], inp.seaLevelM, editsKey].join(",");
 }
 
-/** Compute (or return cached) hydrology for the current climate inputs. */
-export function getHydrology(inp: ClimateInputs): Promise<HydroGrid> {
-  const key = keyFor(inp);
+/** A function that turns a loaded DEM block into the composite elevation sampler
+ *  the hydrology should use (base DEM + detail noise + edits). */
+export type HydroSamplerFactory = (block: DemBlock) => (lng: number, lat: number) => number | null;
+
+/**
+ * Compute (or return cached) hydrology. With no options, drains the raw DEM
+ * (the original behaviour). Pass `editsKey` + `sampler` to drain the composite
+ * field instead — so terrain edits reroute the rivers. Keyed so each distinct
+ * edit set caches separately.
+ */
+export function getHydrology(
+  inp: ClimateInputs,
+  opts: { editsKey?: string; sampler?: HydroSamplerFactory } = {},
+): Promise<HydroGrid> {
+  const key = keyFor(inp, opts.editsKey ?? "");
   const hit = cache.get(key);
   if (hit) return hit;
   const [w, s, e, n] = AOI.climateExtent;
-  const p = loadDemBlock(w, s, e, n).then((block) => buildGrid(block, inp));
+  const p = loadDemBlock(w, s, e, n).then((block) =>
+    buildGrid(block, inp, opts.sampler ? opts.sampler(block) : undefined),
+  );
   cache.set(key, p);
   return p;
 }

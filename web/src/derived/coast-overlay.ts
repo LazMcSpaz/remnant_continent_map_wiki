@@ -93,8 +93,13 @@ export class CoastOverlay {
       const sampler = makeCompositeSampler(this.block, this.edits);
       const { sea } = traceWorld(this.block, inp, sampler);
 
-      // Rivers from hydrology, rendered as smooth meandering lines.
-      const hydro = await getHydrology(inp);
+      // Rivers from hydrology over the SAME composite field, so edits reroute
+      // them. Keyed by the edits so each sculpt caches distinctly.
+      const editsKey = this.edits.map((ed) => `${ed.lng.toFixed(3)},${ed.lat.toFixed(3)},${ed.radiusKm},${ed.deltaM}`).join("|");
+      const hydro = await getHydrology(inp, {
+        editsKey,
+        sampler: (blk) => makeCompositeSampler(blk, this.edits),
+      });
       const rivers = renderRivers(hydro.toRiverChains(RIVER_MIN), RIVER_MIN);
 
       this.render(sea as FeatureCollection, rivers);

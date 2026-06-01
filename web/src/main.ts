@@ -16,6 +16,8 @@ import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
 import { CoastOverlay } from "./derived/coast-overlay";
+import { TerrainBrush } from "./derived/terrain-brush";
+import { mountTerrainBrushControl } from "./notes/terrain-brush-control";
 import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { IsochroneOverlay } from "./derived/isochrone-overlay";
 import { mountIsochroneControl, type IsochroneHost } from "./notes/isochrone-control";
@@ -366,6 +368,18 @@ async function boot(): Promise<void> {
       document.getElementById("isochrone-panel") ?? document.createElement("div"),
       isochroneHost,
     );
+
+    // Terrain brush: sculpt elevation, then Recalculate to reflow rivers/coast.
+    const terrainBrush = new TerrainBrush(map, {
+      recalculate: async (edits) => {
+        coast.setEdits(edits);
+        coast.setVisible(true);
+        await coast.build(data);
+      },
+      onStatus: setStatus,
+    });
+    const brushEl = document.getElementById("terrain-brush-panel");
+    if (brushEl && hasBackend()) mountTerrainBrushControl(brushEl, terrainBrush);
 
     // Esc ends corridor add-members mode.
     document.addEventListener("keydown", (e) => {

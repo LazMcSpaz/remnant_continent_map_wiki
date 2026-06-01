@@ -65,16 +65,29 @@ can be added later without re-authoring data (see ADR 0003):
 Per the three-layer model, only these inputs are stored; temperature fields,
 growing-degree-days, and suitability scores are derived at runtime.
 
-## The new coastline (vector)
+## Editable terrain → derived coast, rivers, climate
+
+Elevation is the single editable source of truth; coast, rivers, and climate all
+*derive* from it, so they can't disagree. The **composite elevation field**
+(`src/derived/terrain.ts`) = base DEM + **procedural detail noise**
+(`src/derived/noise.ts`: fBm + ridged, elevation-scaled, so mountains are rugged
+and plains gentle — natural detail at *any* zoom, since it's a function, not
+pixels) + **brush edits** (soft Gaussian deltas).
+
+The **Terrain brush** (`src/derived/terrain-brush.ts`, authoring-only panel)
+sculpts that field — drag to raise/lower with a video-game falloff — then
+**Recalculate** re-derives everything from the reshaped terrain: the hydrology
+re-drains the composite field so **rivers reroute**, and the **New coastline**
+re-traces. Rivers render via `src/derived/river-render.ts` as **meandering,
+spline-smoothed, width-tapered** polylines (Catmull-Rom + a perpendicular fBm
+meander that tightens as the river narrows) — natural watercourses, not zigzags.
 
 The **New coastline** layer draws the post-shift sea over the real vector
-basemap, so the cataclysm's drowning reads against accurate present-day ground.
-`src/derived/world-vector.ts` *contours* `post-shift sea level − elevation` at 0
-(via `d3-contour`) into a clean sea polygon, **Chaikin-smoothed** so shores flow
-naturally instead of stair-stepping, then `src/derived/coast-overlay.ts` fills it
-in the shared water color (matching real water) with a luminous new-shore line.
-Traced once from a loaded DEM block and cached. It's computed over
-`AOI.climateExtent`, which is widened to fill the working continent.
+basemap. `src/derived/world-vector.ts` *contours* `sea level − composite
+elevation` at 0 (via `d3-contour`) into a clean sea polygon, **Chaikin-smoothed**
+so shores flow naturally, filled in the shared water color with a luminous
+new-shore line. Computed over `AOI.climateExtent` (widened to fill the working
+continent) and cached, keyed by the edits so each sculpt caches distinctly.
 
 ## Map extent & layers
 
