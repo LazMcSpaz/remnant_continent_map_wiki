@@ -89,6 +89,13 @@ so shores flow naturally, filled in the shared water color with a luminous
 new-shore line. Computed over `AOI.climateExtent` (widened to fill the working
 continent) and cached, keyed by the edits so each sculpt caches distinctly.
 
+**Inland lakes** fall out of the same drainage pass: the priority-flood records
+where it had to raise a depression above its real elevation (`filled > elev`),
+and a basin with enough rainfall draining into it (an inflow gate, so dry pits
+aren't lakes) becomes a lake — contoured + smoothed like the coast, in the same
+water color. So carving a closed basin with the brush and pressing Recalculate
+makes a lake pool there.
+
 ## Map extent & layers
 
 The map spans **continental North America** (pannable across Canada/US/Mexico)

@@ -16,7 +16,7 @@ import { AOI } from "../config";
 import type { FeatureData } from "../layers/features";
 import { climateInputs, type ClimateInputs } from "./climate";
 import { loadDemBlock, type DemBlock } from "./elevation";
-import { traceWorld } from "./world-vector";
+import { traceWorld, lakePolygons } from "./world-vector";
 import { getHydrology } from "./hydrology";
 import { renderRivers } from "./river-render";
 import { makeCompositeSampler, type ElevationEdit } from "./terrain";
@@ -25,6 +25,9 @@ import { WATER_COLOR } from "../map/war-room-style";
 const SEA_SRC = "rc-coast-sea";
 const SEA_FILL = "rc-coast-sea-fill";
 const SHORE_LINE = "rc-coast-shore";
+const LAKE_SRC = "rc-coast-lake";
+const LAKE_FILL = "rc-coast-lake-fill";
+const LAKE_LINE = "rc-coast-lake-shore";
 const RIVER_SRC = "rc-coast-river";
 const RIVER_LINE = "rc-coast-river-line";
 
@@ -69,7 +72,7 @@ export class CoastOverlay {
     }
     if (!this.added) return;
     const v = visible ? "visible" : "none";
-    for (const id of [SEA_FILL, SHORE_LINE, RIVER_LINE]) {
+    for (const id of [SEA_FILL, SHORE_LINE, LAKE_FILL, LAKE_LINE, RIVER_LINE]) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, "visibility", v);
     }
   }
@@ -102,21 +105,30 @@ export class CoastOverlay {
       });
       const rivers = renderRivers(hydro.toRiverChains(RIVER_MIN), RIVER_MIN);
 
-      this.render(sea as FeatureCollection, rivers);
+      // Inland lakes: filled basins that hold water, smoothed like the coast.
+      const lakes = lakePolygons(hydro.lakeMask, hydro.w, hydro.h);
+
+      this.render(sea as FeatureCollection, rivers, lakes as FeatureCollection);
       this.onStatus("Terrain recomputed.");
     } catch (err) {
       this.onStatus(err instanceof Error ? err.message : String(err), "error");
     }
   }
 
-  private render(sea: FeatureCollection, rivers: FeatureCollection<LineString>): void {
+  private render(
+    sea: FeatureCollection,
+    rivers: FeatureCollection<LineString>,
+    lakes: FeatureCollection,
+  ): void {
     if (this.added) {
       (this.map.getSource(SEA_SRC) as GeoJSONSource | undefined)?.setData(sea);
       (this.map.getSource(RIVER_SRC) as GeoJSONSource | undefined)?.setData(rivers);
+      (this.map.getSource(LAKE_SRC) as GeoJSONSource | undefined)?.setData(lakes);
       return;
     }
     const before = this.map.getLayer("rc-location-circle") ? "rc-location-circle" : undefined;
     this.map.addSource(SEA_SRC, { type: "geojson", data: sea });
+    this.map.addSource(LAKE_SRC, { type: "geojson", data: lakes });
     this.map.addSource(RIVER_SRC, { type: "geojson", data: rivers });
     const vis = this.visible ? "visible" : "none";
     this.map.addLayer(
@@ -129,8 +141,29 @@ export class CoastOverlay {
       },
       before,
     );
-    // Rivers above the sea fill (so a river reads up to the shore) but below the
-    // shore line + markers. Width tapers with flow strength.
+    // Inland lakes: same water color + a shore line, like the coast.
+    this.map.addLayer(
+      {
+        id: LAKE_FILL,
+        type: "fill",
+        source: LAKE_SRC,
+        layout: { visibility: vis },
+        paint: { "fill-color": WATER_COLOR, "fill-opacity": 1 },
+      },
+      before,
+    );
+    this.map.addLayer(
+      {
+        id: LAKE_LINE,
+        type: "line",
+        source: LAKE_SRC,
+        layout: { visibility: vis, "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": SHORE_COLOR, "line-width": 1, "line-opacity": 0.8, "line-blur": 0.4 },
+      },
+      before,
+    );
+    // Rivers above the water fills (so a river reads up to the shore) but below
+    // the shore lines + markers. Width tapers with flow strength.
     this.map.addLayer(
       {
         id: RIVER_LINE,

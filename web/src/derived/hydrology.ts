@@ -30,6 +30,8 @@ export interface HydroGrid {
   extent: [number, number, number, number];
   /** 0..100 river strength per cell (0 for ocean / non-channel land). */
   strength: Float32Array;
+  /** 1 where an inland basin holds water (a lake), else 0. Row-major W×H. */
+  lakeMask: Uint8Array;
   /** 0..100 river water available near a point (searches a small neighbourhood). */
   waterAt(lng: number, lat: number): number;
   /** Channels (strength ≥ minStrength) as drainage polylines for crisp drawing.
@@ -188,6 +190,20 @@ function buildGrid(block: DemBlock, inp: ClimateInputs, sample?: (lng: number, l
     strength[k] = (Math.log(accum[k] + 1) / denom) * 100;
   }
 
+  // --- Inland lakes: a depression cell holds water where the priority-flood
+  // had to raise it above its real elevation (filled > elev), AND enough rain
+  // drains into the basin to keep it full (accum gate) — so a dry desert pit
+  // isn't a lake but a wet mountain basin is. lakeDepth (m) drives nothing but
+  // the polygon membership here; the surface reads as flat water.
+  const LAKE_MIN_DEPTH_M = 8; // ignore sub-grid noise puddles
+  const LAKE_MIN_INFLOW = 1.0; // rainfall units gathered into the cell
+  const lakeMask = new Uint8Array(N);
+  for (let k = 0; k < N; k++) {
+    if (ocean[k]) continue;
+    const depth = filled[k] - elev[k];
+    if (depth >= LAKE_MIN_DEPTH_M && accum[k] >= LAKE_MIN_INFLOW) lakeMask[k] = 1;
+  }
+
   const colOf = (lng: number) => Math.floor(((lng - w) / (e - w)) * W);
   const rowOf = (lat: number) => Math.floor(((n - lat) / (n - s)) * H);
 
@@ -196,6 +212,7 @@ function buildGrid(block: DemBlock, inp: ClimateInputs, sample?: (lng: number, l
     h: H,
     extent: AOI.climateExtent,
     strength,
+    lakeMask,
     waterAt(lng, lat) {
       const ci = colOf(lng);
       const cj = rowOf(lat);

@@ -202,3 +202,37 @@ export function traceWorld(
 
   return { land, sea, biomes };
 }
+
+/**
+ * Contour an inland-lake mask (W×H, 1 = water) into smoothed GeoJSON polygons.
+ * Independent of the trace grid — it builds a grid matching the mask's own
+ * dimensions (the hydrology grid). Chaikin-smoothed like the coastline, so a
+ * lake reads as a natural body of water rather than a blocky basin.
+ */
+export function lakePolygons(
+  mask: Uint8Array,
+  w: number,
+  h: number,
+): FeatureCollection<MultiPolygon | Polygon> {
+  const [west, south, east, north] = AOI.climateExtent;
+  const grid: Grid = {
+    w,
+    h,
+    toLngLat(col, row) {
+      return [west + (col / w) * (east - west), north - (row / h) * (north - south)];
+    },
+  };
+  const field = new Float64Array(w * h);
+  let any = false;
+  for (let i = 0; i < w * h; i++) {
+    field[i] = mask[i] ? 1 : 0;
+    if (mask[i]) any = true;
+  }
+  if (!any) return { type: "FeatureCollection", features: [] };
+  const c = contours().size([w, h]).thresholds([0.5])(Array.from(field));
+  const geom: MultiPolygon = {
+    type: "MultiPolygon",
+    coordinates: c.length ? projectRings(c[0].coordinates, grid) : [],
+  };
+  return { type: "FeatureCollection", features: [{ type: "Feature", geometry: geom, properties: {} }] };
+}
