@@ -16,6 +16,7 @@ import type {
   MultiPolygon,
 } from "geojson";
 import { getSupabase } from "../state/supabase";
+import type { ElevationEdit } from "../derived/terrain";
 import type {
   Faction,
   FactionRelation,
@@ -57,6 +58,8 @@ export interface FeatureData {
   terrainRegions: TerrainRegionGeo[];
   /** Global climate/energy inputs, or null when none/offline. */
   worldSettings: WorldSettingsGeo | null;
+  /** Persisted terrain-brush elevation edits (soft Gaussian deltas). */
+  elevationEdits: ElevationEdit[];
 }
 
 export interface TerrainProps {
@@ -152,10 +155,11 @@ export async function loadFeatures(): Promise<FeatureData> {
     locationDetails: new Map<string, LocationDetail>(),
     terrainRegions: [],
     worldSettings: null,
+    elevationEdits: [],
   };
   if (!sb) return data;
 
-  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes] =
+  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes, editsRes] =
     await Promise.all([
       sb.from("factions").select("*"),
       sb.from("faction_relations").select("*"),
@@ -167,6 +171,7 @@ export async function loadFeatures(): Promise<FeatureData> {
       sb.from("route_groups").select("*"),
       sb.from("route_group_members").select("*"),
       sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
+      sb.from("elevation_edits_geojson").select("*"),
     ]);
 
   for (const res of [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
@@ -174,6 +179,16 @@ export async function loadFeatures(): Promise<FeatureData> {
   }
   data.worldSettings = (worldRes.data as WorldSettingsGeo | null) ?? null;
   data.factionRelations = (relationsRes.data ?? []) as FactionRelation[];
+  // Terrain-brush edits: payload carries the brush params (lng/lat/radius/delta).
+  data.elevationEdits = ((editsRes.data ?? []) as Array<{ id: string; payload: Record<string, number> }>).map(
+    (r) => ({
+      id: r.id,
+      lng: r.payload.lng,
+      lat: r.payload.lat,
+      radiusKm: r.payload.radiusKm,
+      deltaM: r.payload.deltaM,
+    }),
+  );
   data.routeGroups = (groupsRes.data ?? []) as RouteGroup[];
   data.groupMembers = (membersRes.data ?? []) as RouteGroupMember[];
 
@@ -322,6 +337,41 @@ export function createRoute(
 
 export function createTerritory(geometry: Polygon, factionId: string): Promise<unknown> {
   return rpc("create_territory", { geometry, faction_id: factionId });
+}
+
+// --- Terrain-brush elevation edits ------------------------------------------
+
+const KM_PER_DEG_LAT = 111.32;
+
+/** Circle polygon (GeoJSON) approximating a brush footprint, for the geom col. */
+function brushFootprint(edit: ElevationEdit, steps = 32): Polygon {
+  const kmPerDegLng = KM_PER_DEG_LAT * Math.cos((edit.lat * Math.PI) / 180);
+  const ring: number[][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    ring.push([
+      edit.lng + (Math.cos(a) * edit.radiusKm) / kmPerDegLng,
+      edit.lat + (Math.sin(a) * edit.radiusKm) / KM_PER_DEG_LAT,
+    ]);
+  }
+  return { type: "Polygon", coordinates: [ring] };
+}
+
+/** Persist one brush edit; returns its new server id. */
+export async function createElevationEdit(edit: ElevationEdit): Promise<string> {
+  const id = await rpc("create_elevation_edit", {
+    geometry: brushFootprint(edit),
+    radius_km: edit.radiusKm,
+    delta_m: edit.deltaM,
+    center_lng: edit.lng,
+    center_lat: edit.lat,
+  });
+  return id as string;
+}
+
+/** Delete one persisted brush edit by id. */
+export async function deleteElevationEdit(id: string): Promise<void> {
+  await rpc("delete_elevation_edit", { id });
 }
 
 // --- Route breaks -----------------------------------------------------------

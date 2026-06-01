@@ -26,6 +26,7 @@ import {
   createRouteGroup,
   addRouteGroupMember,
   addNote,
+  createElevationEdit,
 } from "../layers/features";
 
 // Snapshot v2 adds route breaks + corridors (route groups). v1 bundles (no such
@@ -72,6 +73,8 @@ export interface Snapshot {
   routeBreaks: BreakExport[];
   routeGroups: GroupExport[];
   groupMembers: GroupMemberExport[];
+  /** Terrain-brush elevation edits (brush params from payload). */
+  elevationEdits: Array<{ lng: number; lat: number; radiusKm: number; deltaM: number }>;
 }
 
 type RcLayer = "location" | "route" | "territory" | "terrain";
@@ -92,7 +95,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — nothing to export.");
 
-  const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members] =
+  const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members, edits] =
     await Promise.all([
       sb.from("factions").select("id,name,color,tier"),
       sb.from("faction_relations").select("faction_a,faction_b,level"),
@@ -106,9 +109,10 @@ export async function exportSnapshot(): Promise<Snapshot> {
       sb.from("route_breaks_geojson").select("*"),
       sb.from("route_groups").select("id,name,labels"),
       sb.from("route_group_members").select("group_id,route_id"),
+      sb.from("elevation_edits_geojson").select("payload"),
     ]);
 
-  for (const r of [factions, relations, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members]) {
+  for (const r of [factions, relations, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members, edits]) {
     if (r.error) throw new Error(`Export failed: ${r.error.message}`);
   }
 
@@ -190,6 +194,12 @@ export async function exportSnapshot(): Promise<Snapshot> {
     groupMembers: ((members.data ?? []) as Array<Record<string, unknown>>).map((m) => ({
       groupId: m.group_id as string,
       routeId: m.route_id as string,
+    })),
+    elevationEdits: ((edits.data ?? []) as Array<{ payload: Record<string, number> }>).map((e) => ({
+      lng: e.payload.lng,
+      lat: e.payload.lat,
+      radiusKm: e.payload.radiusKm,
+      deltaM: e.payload.deltaM,
     })),
   };
 }
@@ -402,6 +412,16 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
       result.notes++;
     } catch (err) {
       result.errors.push(`note: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Terrain-brush elevation edits (no id remapping needed — they reference no
+  // other features). Recreated via the same RPC the brush uses.
+  for (const ed of snap.elevationEdits ?? []) {
+    try {
+      await createElevationEdit({ id: "", lng: ed.lng, lat: ed.lat, radiusKm: ed.radiusKm, deltaM: ed.deltaM });
+    } catch (err) {
+      result.errors.push(`elevation edit: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

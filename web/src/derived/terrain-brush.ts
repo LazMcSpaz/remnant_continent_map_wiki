@@ -21,8 +21,9 @@ const STAMP_FILL = "rc-brush-stamps-fill";
 let editSeq = 0;
 
 export interface TerrainBrushHost {
-  /** Re-derive coast/rivers/climate from the current edits. */
-  recalculate(edits: ElevationEdit[]): void | Promise<void>;
+  /** Persist any new edits + re-derive coast/rivers/climate. Returns the
+   *  canonical edit list (with server ids) for the brush to adopt. */
+  recalculate(edits: ElevationEdit[]): Promise<ElevationEdit[]>;
   onStatus(text: string, kind?: "info" | "error"): void;
   /** Seed edits (e.g. loaded from persistence). */
   initialEdits?: ElevationEdit[];
@@ -109,13 +110,20 @@ export class TerrainBrush {
     this.edits = [];
     this.dirty = true;
     this.renderStamps();
-    void this.host.recalculate(this.edits);
+    void this.host.recalculate(this.edits).then((canonical) => {
+      this.edits = canonical;
+      this.dirty = false;
+      this.renderStamps();
+    });
   }
 
-  /** Recompute the world from the current edits. */
+  /** Persist + recompute the world from the current edits. */
   recalculate(): void {
-    void this.host.recalculate(this.edits);
-    this.dirty = false;
+    void this.host.recalculate(this.edits).then((canonical) => {
+      this.edits = canonical;
+      this.dirty = false;
+      this.renderStamps();
+    });
   }
 
   private onDown = (e: MapMouseEvent): void => {

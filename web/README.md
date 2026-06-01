@@ -77,10 +77,14 @@ pixels) + **brush edits** (soft Gaussian deltas).
 The **Terrain brush** (`src/derived/terrain-brush.ts`, authoring-only panel)
 sculpts that field — drag to raise/lower with a video-game falloff — then
 **Recalculate** re-derives everything from the reshaped terrain: the hydrology
-re-drains the composite field so **rivers reroute**, and the **New coastline**
-re-traces. Rivers render via `src/derived/river-render.ts` as **meandering,
-spline-smoothed, width-tapered** polylines (Catmull-Rom + a perpendicular fBm
-meander that tightens as the river narrows) — natural watercourses, not zigzags.
+re-drains the composite field so **rivers reroute**, the **New coastline**
+re-traces, and inland **lakes** re-form. Rivers render via
+`src/derived/river-render.ts` as **meandering, spline-smoothed, width-tapered**
+polylines (Catmull-Rom + a perpendicular fBm meander that tightens as the river
+narrows) — natural watercourses, not zigzags. Edits **persist** to the
+`elevation_edits` table (brush params in `payload`, footprint as the geometry)
+via `create_elevation_edit` / `delete_elevation_edit` RPCs, are reloaded on
+startup, and round-trip through Save / Export / Import.
 
 The **New coastline** layer draws the post-shift sea over the real vector
 basemap. `src/derived/world-vector.ts` *contours* `sea level − composite
