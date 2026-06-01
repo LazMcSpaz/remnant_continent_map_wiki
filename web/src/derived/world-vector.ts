@@ -26,8 +26,11 @@ import {
 } from "./climate";
 import { elevationFromBlock, type DemBlock } from "./elevation";
 
-/** Grid resolution for tracing. Higher = crisper edges, slower trace. */
-const GRID_W = 360;
+/** Grid resolution for tracing. Higher = finer edges, slower trace. */
+const GRID_W = 600;
+/** Chaikin smoothing iterations — turns the contour staircase into flowing
+ *  curves so a traced lake/sea reads as a natural shape, not a polygon. */
+const SMOOTH_ITERS = 3;
 
 export interface BiomeRegion {
   biomeId: string;
@@ -69,10 +72,41 @@ function makeGrid(): Grid {
   };
 }
 
-/** Rewrite d3-contour polygon ring coords (grid space) into [lng,lat]. */
+/**
+ * Chaikin corner-cutting on a closed ring: each segment is replaced by two
+ * points at 1/4 and 3/4, rounding the staircase into a smooth curve. Repeated a
+ * few times this makes a contour read as a natural coastline rather than a
+ * blocky polygon. Operates in grid space (before projection).
+ */
+function chaikinClosed(ring: Position[], iters: number): Position[] {
+  let pts = ring;
+  // Drop the duplicated closing point while smoothing, re-close at the end.
+  if (pts.length > 1) {
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    if (a[0] === b[0] && a[1] === b[1]) pts = pts.slice(0, -1);
+  }
+  for (let it = 0; it < iters && pts.length >= 3; it++) {
+    const out: Position[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const q = pts[(i + 1) % pts.length];
+      out.push([p[0] * 0.75 + q[0] * 0.25, p[1] * 0.75 + q[1] * 0.25]);
+      out.push([p[0] * 0.25 + q[0] * 0.75, p[1] * 0.25 + q[1] * 0.75]);
+    }
+    pts = out;
+  }
+  if (pts.length) pts = [...pts, pts[0]]; // re-close
+  return pts;
+}
+
+/** Rewrite d3-contour polygon ring coords (grid space) into [lng,lat], with
+ *  Chaikin smoothing so edges flow naturally instead of stair-stepping. */
 function projectRings(coords: Position[][][], grid: Grid): Position[][][] {
   return coords.map((poly) =>
-    poly.map((ring) => ring.map(([cx, cy]) => grid.toLngLat(cx, cy) as Position)),
+    poly.map((ring) =>
+      chaikinClosed(ring, SMOOTH_ITERS).map(([cx, cy]) => grid.toLngLat(cx, cy) as Position),
+    ),
   );
 }
 

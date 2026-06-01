@@ -17,12 +17,14 @@ import type { FeatureData } from "../layers/features";
 import { climateInputs, type ClimateInputs } from "./climate";
 import { loadDemBlock, type DemBlock } from "./elevation";
 import { traceWorld } from "./world-vector";
+import { WATER_COLOR } from "../map/war-room-style";
 
 const SEA_SRC = "rc-coast-sea";
 const SEA_FILL = "rc-coast-sea-fill";
 const SHORE_LINE = "rc-coast-shore";
 
-const SEA_FILL_COLOR = "#0c2740";
+// New water uses the SAME color as existing water (war-room WATER_COLOR), at
+// full opacity, so drowned seas are indistinguishable from real water bodies.
 const SHORE_COLOR = "#3fa7d6";
 
 type StatusFn = (msg: string, kind?: "info" | "error") => void;
@@ -70,7 +72,8 @@ export class CoastOverlay {
     const [w, s, e, n] = AOI.climateExtent;
     this.onStatus("Tracing the new coastline…");
     try {
-      if (!this.block) this.block = await loadDemBlock(w, s, e, n);
+      // Higher zoom + tile budget → sharper coastline detail for the trace.
+      if (!this.block) this.block = await loadDemBlock(w, s, e, n, 7, 600);
       const { sea } = traceWorld(this.block, inp);
       this.render(sea as FeatureCollection);
       this.onStatus("New coastline drawn.");
@@ -93,7 +96,7 @@ export class CoastOverlay {
         type: "fill",
         source: SEA_SRC,
         layout: { visibility: vis },
-        paint: { "fill-color": SEA_FILL_COLOR, "fill-opacity": 0.62 },
+        paint: { "fill-color": WATER_COLOR, "fill-opacity": 1 },
       },
       before,
     );

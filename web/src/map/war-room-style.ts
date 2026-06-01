@@ -15,12 +15,17 @@
 
 import type { Map as MlMap, LayerSpecification } from "maplibre-gl";
 
+/** Shared water color — used for BOTH the real basemap water and our newly
+ *  drowned seas, so new and existing water read identically. Brightened a
+ *  couple of shades from the original near-black so water is legible. */
+export const WATER_COLOR = "#15324a";
+
 /** War-room palette. */
 export const WAR_ROOM = {
   land: "#0e141b",
   landAlt: "#121922", // parks/landuse, a hair lighter so they read faintly
-  water: "#0a1620",
-  waterLine: "#2b6c8f", // rivers/canals — luminous cool
+  water: WATER_COLOR,
+  waterLine: "#3a7fa0", // rivers/canals — luminous cool
   roadMajor: "#3a4654",
   roadMinor: "#28323d",
   rail: "#39424d",
