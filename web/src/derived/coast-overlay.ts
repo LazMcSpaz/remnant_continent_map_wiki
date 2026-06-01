@@ -72,8 +72,9 @@ export class CoastOverlay {
     const [w, s, e, n] = AOI.climateExtent;
     this.onStatus("Tracing the new coastline…");
     try {
-      // Higher zoom + tile budget → sharper coastline detail for the trace.
-      if (!this.block) this.block = await loadDemBlock(w, s, e, n, 7, 600);
+      // Higher zoom + tile budget → sharper coastline detail for the trace,
+      // even across the wide extent (loadDemBlock lowers zoom to fit the budget).
+      if (!this.block) this.block = await loadDemBlock(w, s, e, n, 7, 900);
       const { sea } = traceWorld(this.block, inp);
       this.render(sea as FeatureCollection);
       this.onStatus("New coastline drawn.");

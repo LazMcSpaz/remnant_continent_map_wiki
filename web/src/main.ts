@@ -15,9 +15,7 @@ import { mountEditorToolbar } from "./layers/editor";
 import { WikiPanel, type WikiHost } from "./notes/wiki-panel";
 import { mountIOToolbar } from "./state/io";
 import { ClimateOverlay } from "./derived/climate-overlay";
-import { WorldOverlay } from "./derived/world-overlay";
 import { CoastOverlay } from "./derived/coast-overlay";
-import { RiversOverlay } from "./derived/rivers-overlay";
 import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { IsochroneOverlay } from "./derived/isochrone-overlay";
 import { mountIsochroneControl, type IsochroneHost } from "./notes/isochrone-control";
@@ -101,8 +99,6 @@ async function boot(): Promise<void> {
     const panelMount = document.querySelector<HTMLElement>(".map-area")
       ?? document.getElementById("app")
       ?? document.body;
-    // The fictional world drawn as crisp vector art (coastline + biomes + rivers).
-    const world = new WorldOverlay(map, setStatus);
     // The post-shift drowned coast, drawn over the real vector basemap. On by
     // default — it's the premise of the world — so build it now.
     const coast = new CoastOverlay(map, setStatus);
@@ -110,9 +106,6 @@ async function boot(): Promise<void> {
     // Derived climate overlay (Phase 2): a static raster, baked once on toggle.
     const climate = new ClimateOverlay(map, setStatus);
     climate.recompute(data);
-    // Derived hydrology overlay: rivers from DEM flow accumulation.
-    const rivers = new RiversOverlay(map, setStatus);
-    rivers.recompute(data);
     // Phase 4 — flow simulation over the network graph.
     const sim = new SimController(map, () => data, () => graph, setStatus);
     // Phase 4 analysis — chokepoint / centrality detection over the graph.
@@ -443,7 +436,6 @@ async function boot(): Promise<void> {
       graph = rebuildGraph(next);
       updateFeatureData(map, next);
       climate.recompute(next);
-      rivers.recompute(next);
       chokepoints.recompute(graph, next.routes);
       // Refresh an active isochrone overlay against the rebuilt graph, unless its
       // origin city no longer exists.
@@ -478,10 +470,8 @@ async function boot(): Promise<void> {
         layersEl,
         map,
         climate,
-        rivers,
         sim,
         (visible) => chokepoints.setVisible(visible, graph, data.routes),
-        (visible) => world.setVisible(visible, data),
         (visible) => coast.setVisible(visible, data),
       );
     }

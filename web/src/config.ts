@@ -25,12 +25,14 @@ export const AOI = {
   /** [west, south, east, north] — Alaska/Canada down to Panama, coast to coast. */
   maxBounds: [-170, 5, -50, 75] as [number, number, number, number],
   /**
-   * Fixed extent the static climate overlay is computed over (once). Covers the
-   * populated band of North America where the fiction lives — from northern
-   * Mexico to southern Canada, coast to coast. Bounded so the one-time DEM load
-   * stays light; panning beyond it simply shows no overlay there.
+   * Fixed extent the climate + coastline overlays are computed over (once).
+   * Widened to cover the working continent so the overlays fill the map rather
+   * than a small central rectangle — from southern Mexico up into Canada, well
+   * past both coasts. The one-time DEM load stays bounded because loadDemBlock
+   * auto-lowers the tile zoom to fit a larger extent; panning beyond this still
+   * shows no overlay.
    */
-  climateExtent: [-126, 22, -64, 52] as [number, number, number, number],
+  climateExtent: [-128, 14, -58, 58] as [number, number, number, number],
 };
 
 function str(value: unknown, fallback: string): string {

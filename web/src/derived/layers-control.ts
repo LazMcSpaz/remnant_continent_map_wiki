@@ -5,11 +5,10 @@
 import type { Map as MlMap } from "maplibre-gl";
 import { setGroupVisible, type LayerGroup } from "../layers/render";
 import type { ClimateOverlay } from "./climate-overlay";
-import type { RiversOverlay } from "./rivers-overlay";
 import type { SimController } from "../sim/sim-controller";
 
 interface Row {
-  id: LayerGroup | "climate" | "water" | "rivers" | "sim" | "chokepoints" | "world" | "coast";
+  id: LayerGroup | "climate" | "sim" | "chokepoints" | "coast";
   label: string;
   swatch: string;
   /** Initial checked state. */
@@ -18,12 +17,9 @@ interface Row {
 
 const ROWS: Row[] = [
   { id: "coast", label: "New coastline", swatch: "#3fa7d6", on: true },
-  { id: "world", label: "World (drawn)", swatch: "#6f8f4a", on: false },
   { id: "sim", label: "Simulation (pressure)", swatch: "#d23b3b", on: false },
   { id: "chokepoints", label: "Chokepoints", swatch: "#d23b3b", on: false },
   { id: "climate", label: "Climate zones", swatch: "#e85d3a", on: false },
-  { id: "water", label: "Sea level (flooded)", swatch: "#abd2df", on: false },
-  { id: "rivers", label: "Rivers", swatch: "#6fa8c6", on: false },
   { id: "terrain", label: "Terrain", swatch: "#7d9b4e", on: true },
   { id: "territories", label: "Territories", swatch: "#6ea8fe", on: true },
   { id: "routes", label: "Routes & breaks", swatch: "#e0af68", on: true },
@@ -34,10 +30,8 @@ export function mountLayersPanel(
   container: HTMLElement,
   map: MlMap,
   climate: ClimateOverlay,
-  rivers: RiversOverlay,
   sim: SimController,
   onChokepoint: (visible: boolean) => void,
-  onWorld: (visible: boolean) => void,
   onCoast: (visible: boolean) => void,
 ): void {
   container.replaceChildren();
@@ -62,11 +56,8 @@ export function mountLayersPanel(
 
     cb.addEventListener("change", () => {
       if (row.id === "climate") climate.setVisible(cb.checked);
-      else if (row.id === "water") climate.setWaterVisible(cb.checked);
-      else if (row.id === "rivers") rivers.setVisible(cb.checked);
       else if (row.id === "sim") sim.setVisible(cb.checked);
       else if (row.id === "chokepoints") onChokepoint(cb.checked);
-      else if (row.id === "world") onWorld(cb.checked);
       else if (row.id === "coast") onCoast(cb.checked);
       else setGroupVisible(map, row.id, cb.checked);
     });
