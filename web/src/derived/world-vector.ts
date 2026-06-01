@@ -39,6 +39,9 @@ export interface BiomeRegion {
 export interface WorldVectors {
   /** Land above the post-shift sea level — its outline is the new coastline. */
   land: FeatureCollection<MultiPolygon | Polygon>;
+  /** The post-shift sea (incl. newly-drowned land) — shade this over the real
+   *  basemap so the new coastline reads against the present-day ground. */
+  sea: FeatureCollection<MultiPolygon | Polygon>;
   /** One feature per biome present, ready to fill with its color. */
   biomes: BiomeRegion[];
 }
@@ -118,6 +121,19 @@ export function traceWorld(block: DemBlock, inp: ClimateInputs): WorldVectors {
     features: [{ type: "Feature", geometry: landGeom, properties: {} }],
   };
 
+  // --- Sea: the inverse — contour the submerged field (sea − elev) at 0 to get
+  // the post-shift water body (includes newly-drowned lowlands). Drawn over the
+  // real basemap, its boundary IS the new coastline.
+  const seaContour = contours().size([W, H]).thresholds([0])(Array.from(submerged));
+  const seaGeom: MultiPolygon = {
+    type: "MultiPolygon",
+    coordinates: seaContour.length ? projectRings(seaContour[0].coordinates, grid) : [],
+  };
+  const sea: FeatureCollection<MultiPolygon | Polygon> = {
+    type: "FeatureCollection",
+    features: [{ type: "Feature", geometry: seaGeom, properties: {} }],
+  };
+
   // --- Biomes: for each biome present, contour the indicator field (1 where the
   // cell IS that biome, else 0) at 0.5 → a clean multipolygon for that biome.
   const biomes: BiomeRegion[] = [];
@@ -142,5 +158,5 @@ export function traceWorld(block: DemBlock, inp: ClimateInputs): WorldVectors {
     });
   }
 
-  return { land, biomes };
+  return { land, sea, biomes };
 }

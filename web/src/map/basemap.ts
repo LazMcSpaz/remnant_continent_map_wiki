@@ -8,6 +8,7 @@
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import { AOI, readMapConfig, type MapConfig } from "../config";
 import { bearingToPole, DEFAULT_POLE } from "../derived/climate";
+import { applyWarRoomStyle } from "./war-room-style";
 
 /** Expand a `{s}` subdomain template into explicit a/b/c/d tile URLs (MapLibre
  *  doesn't interpolate {s} itself). A URL without {s} is returned as-is. */
@@ -83,6 +84,15 @@ export function createBasemap(container: HTMLElement): BasemapHandle {
   }
 
   enableMiddleMousePan(map);
+
+  // Reskin the (vector) basemap into the war-room look + hide real labels. Only
+  // meaningful for a vector style; the raster fallback has nothing to restyle.
+  // Re-applied on styledata so it survives a style reload.
+  if (cfg.styleUrl) {
+    const restyle = () => applyWarRoomStyle(map);
+    map.on("load", restyle);
+    map.on("styledata", restyle);
+  }
 
   const ready = new Promise<void>((resolve) => {
     map.on("load", () => resolve());
