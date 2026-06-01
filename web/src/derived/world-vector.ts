@@ -111,11 +111,18 @@ function projectRings(coords: Position[][][], grid: Grid): Position[][][] {
   );
 }
 
-/** Trace the post-shift world from a loaded DEM block. */
-export function traceWorld(block: DemBlock, inp: ClimateInputs): WorldVectors {
+/** Trace the post-shift world from a loaded DEM block. An optional composite
+ *  sampler (base DEM + detail noise + edits) supersedes the raw block, so the
+ *  coastline carries the same fine ruggedness as the rest of the terrain. */
+export function traceWorld(
+  block: DemBlock,
+  inp: ClimateInputs,
+  sample?: (lng: number, lat: number) => number | null,
+): WorldVectors {
   const grid = makeGrid();
   const { w: W, h: H } = grid;
   const n = W * H;
+  const elevAt = sample ?? ((lng: number, lat: number) => elevationFromBlock(block, lng, lat));
 
   // Sample the fields once across the grid.
   const submerged = new Float64Array(n); // seaLevel − elev: >0 underwater
@@ -125,7 +132,7 @@ export function traceWorld(block: DemBlock, inp: ClimateInputs): WorldVectors {
   for (let row = 0; row < H; row++) {
     for (let col = 0; col < W; col++) {
       const [lng, lat] = grid.toLngLat(col + 0.5, row + 0.5);
-      const raw = elevationFromBlock(block, lng, lat);
+      const raw = elevAt(lng, lat);
       const elev = raw ?? 0;
       const sea = seaLevelAt([lng, lat], inp);
       const isWater = raw !== null && elev <= sea;

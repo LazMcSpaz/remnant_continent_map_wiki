@@ -35,6 +35,14 @@ export interface HydroGrid {
   /** Channels (strength ≥ minStrength) as drainage polylines for crisp drawing.
    *  Each segment is a cell→receiver link tagged with its strength. */
   toRiverLines(minStrength: number): FeatureCollection<LineString, { strength: number }>;
+  /** Channels as CONTINUOUS chains (headwater → outlet), each a list of
+   *  {lng,lat,strength} samples, for spline-smoothed, width-tapered rendering. */
+  toRiverChains(minStrength: number): RiverChain[];
+}
+
+/** A continuous river path from headwater toward its outlet. */
+export interface RiverChain {
+  points: Array<{ lng: number; lat: number; strength: number }>;
 }
 
 // --- a compact binary min-heap over cell indices, keyed by filled elevation ---
@@ -227,6 +235,46 @@ function buildGrid(block: DemBlock, inp: ClimateInputs): HydroGrid {
         });
       }
       return { type: "FeatureCollection", features };
+    },
+    toRiverChains(minStrength) {
+      const sampleAt = (k: number) => {
+        const i = k % W;
+        const j = (k / W) | 0;
+        return {
+          lng: w + ((i + 0.5) / W) * (e - w),
+          lat: n - ((j + 0.5) / H) * (n - s),
+          strength: strength[k],
+        };
+      };
+      // A cell is a HEADWATER of a drawn channel if it's above threshold but no
+      // upstream cell feeds it above threshold. Walk each headwater down its
+      // receivers until it drops below threshold or hits the sea — one chain.
+      const feedsInto = new Int32Array(N).fill(0); // count of above-threshold donors
+      for (let k = 0; k < N; k++) {
+        if (ocean[k] || strength[k] < minStrength) continue;
+        const r = receiver[k];
+        if (r >= 0 && strength[r] >= minStrength) feedsInto[r]++;
+      }
+      const chains: RiverChain[] = [];
+      const visited = new Uint8Array(N);
+      for (let k = 0; k < N; k++) {
+        if (ocean[k] || strength[k] < minStrength || feedsInto[k] > 0) continue;
+        // Headwater: walk downstream.
+        const pts: RiverChain["points"] = [];
+        let cur = k;
+        let guard = 0;
+        while (cur >= 0 && !ocean[cur] && strength[cur] >= minStrength && guard++ < N) {
+          pts.push(sampleAt(cur));
+          visited[cur] = 1;
+          const r = receiver[cur];
+          // Continue into the receiver even if confluence (so trunks are whole).
+          cur = r;
+        }
+        // Include the outlet/confluence point for a clean join.
+        if (cur >= 0) pts.push(sampleAt(cur));
+        if (pts.length >= 2) chains.push({ points: pts });
+      }
+      return chains;
     },
   };
 }
