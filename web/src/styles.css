@@ -1211,3 +1211,114 @@ body {
   color: var(--accent);
   border-bottom: 1px dotted var(--accent);
 }
+
+/* ---- Search command palette (Ctrl-K / Cmd-K) ------------------------------ */
+/* Backdrop overlay — covers the whole map area (position:absolute parent). */
+.search-palette {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10vh;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+/* The modal card that holds the input + results. */
+.sp-dialog {
+  width: min(540px, calc(100% - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Text input at the top. */
+.sp-input {
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  outline: none;
+  width: 100%;
+}
+.sp-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Scrollable results list. */
+.sp-results {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Hint / "No results" line. */
+.sp-hint {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* A single result row. */
+.sp-result {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+.sp-result:hover,
+.sp-result-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Kind badge (location / faction / route). */
+.sp-kind {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.sp-kind-location { border-color: #6ea8fe66; color: var(--accent); }
+.sp-kind-faction  { border-color: #7dcd8566; color: #7dcd85; }
+.sp-kind-route    { border-color: #e0af6866; color: #e0af68; }
+
+/* Text block: label + sublabel stacked vertically. */
+.sp-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sp-label {
+  font-size: 0.9rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sp-sublabel {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -52,6 +52,8 @@ import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/f
 import { updateWorldSettings } from "./layers/features";
 import { createElevationEdit, deleteElevationEdit } from "./layers/features";
 import { createSurfaceEdit, deleteSurfaceEdit } from "./layers/features";
+import { buildSearchIndex } from "./notes/search-index";
+import { mountSearchPalette, type SearchHost } from "./notes/search-palette";
 
 const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
 function seasonName(season: number): string {
@@ -263,6 +265,33 @@ async function boot(): Promise<void> {
       routePanel.open(id);
     };
     onRouteClick(map, selectRoute);
+
+    // Search command palette (Ctrl-K / Cmd-K). Searches all locations, factions,
+    // and routes; flies the map to and opens the appropriate panel for each result.
+    const searchPaletteEl = document.getElementById("search-palette");
+    if (searchPaletteEl) {
+      const searchHost: SearchHost = {
+        getEntries: () => buildSearchIndex(data),
+        onChoose: (entry) => {
+          if (entry.kind === "location") {
+            selectLocation(entry.targetId);
+          } else if (entry.kind === "route") {
+            selectRoute(entry.targetId);
+          } else {
+            // Faction: fly to its first city's coordinates if available.
+            // (The factions panel lives in the dock and is not a modal panel,
+            // so we just provide a map fly-to for spatial context.)
+            for (const detail of data.locationDetails.values()) {
+              if (detail.factionId === entry.targetId && detail.lngLat) {
+                map.flyTo({ center: detail.lngLat, zoom: Math.max(map.getZoom(), 5) });
+                break;
+              }
+            }
+          }
+        },
+      };
+      mountSearchPalette(searchPaletteEl, searchHost);
+    }
 
     // Corridors (route groups). Aggregate state is derived from members.
     const memberIdsOf = (groupId: string): string[] =>
