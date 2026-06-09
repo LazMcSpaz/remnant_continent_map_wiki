@@ -34,6 +34,17 @@ import type {
   Note,
 } from "../state/db-types";
 
+/** An authored narrative event on the world timeline (migration 0020). */
+export interface ChronicleEvent {
+  id: string;
+  year: number;
+  title: string;
+  body: string | undefined;
+  targetType: string | undefined;
+  targetId: string | undefined;
+  tags: string[];
+}
+
 export interface FeatureData {
   factions: Map<string, Faction>;
   /** Pairwise faction stance rows (allies/friendly/tense/hostile). */
@@ -63,6 +74,8 @@ export interface FeatureData {
   elevationEdits: ElevationEdit[];
   /** Persisted surface/decay brush edits (painted surface polygons). */
   surfaceEdits: SurfaceEdit[];
+  /** Authored narrative timeline events. */
+  chronicleEvents: ChronicleEvent[];
 }
 
 export type { SurfaceEdit };
@@ -162,10 +175,11 @@ export async function loadFeatures(): Promise<FeatureData> {
     worldSettings: null,
     elevationEdits: [],
     surfaceEdits: [],
+    chronicleEvents: [],
   };
   if (!sb) return data;
 
-  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes, editsRes, surfaceEditsRes] =
+  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes, editsRes, surfaceEditsRes, chronicleRes] =
     await Promise.all([
       sb.from("factions").select("*"),
       sb.from("faction_relations").select("*"),
@@ -179,12 +193,31 @@ export async function loadFeatures(): Promise<FeatureData> {
       sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
       sb.from("elevation_edits_geojson").select("*"),
       sb.from("surface_edits_geojson").select("*"),
+      sb.from("chronicle_events").select("*").order("year", { ascending: true }),
     ]);
 
   for (const res of [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
     if (res.error) throw new Error(`Supabase load failed: ${res.error.message}`);
   }
   data.worldSettings = (worldRes.data as WorldSettingsGeo | null) ?? null;
+  // Chronicle events: map snake_case DB columns to camelCase interface fields.
+  data.chronicleEvents = ((chronicleRes.data ?? []) as Array<{
+    id: string;
+    year: number;
+    title: string;
+    body: string | null;
+    target_type: string | null;
+    target_id: string | null;
+    tags: string[];
+  }>).map((r) => ({
+    id: r.id,
+    year: r.year,
+    title: r.title,
+    body: r.body ?? undefined,
+    targetType: r.target_type ?? undefined,
+    targetId: r.target_id ?? undefined,
+    tags: r.tags,
+  }));
   data.factionRelations = (relationsRes.data ?? []) as FactionRelation[];
   // Terrain-brush edits: payload carries the brush params (lng/lat/radius/delta).
   data.elevationEdits = ((editsRes.data ?? []) as Array<{ id: string; payload: Record<string, number> }>).map(
@@ -764,6 +797,68 @@ export async function updateWorldSettings(
   if (!sb) throw new Error("No backend configured — editing is unavailable.");
   const { error } = await sb.from("world_settings").update(fields).eq("id", id);
   if (error) throw new Error(`update world settings failed: ${error.message}`);
+}
+
+// --- Chronicle events --------------------------------------------------------
+
+/** Insert a new chronicle event; returns the created row (with server-assigned id). */
+export async function addChronicleEvent(
+  event: Omit<ChronicleEvent, "id">,
+): Promise<ChronicleEvent> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — chronicle is unavailable.");
+  const { data, error } = await sb
+    .from("chronicle_events")
+    .insert({
+      year: event.year,
+      title: event.title,
+      body: event.body ?? null,
+      target_type: event.targetType ?? null,
+      target_id: event.targetId ?? null,
+      tags: event.tags,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(`add chronicle event failed: ${error.message}`);
+  const r = data as {
+    id: string; year: number; title: string; body: string | null;
+    target_type: string | null; target_id: string | null; tags: string[];
+  };
+  return {
+    id: r.id,
+    year: r.year,
+    title: r.title,
+    body: r.body ?? undefined,
+    targetType: r.target_type ?? undefined,
+    targetId: r.target_id ?? undefined,
+    tags: r.tags,
+  };
+}
+
+/** Update scalar fields of an existing chronicle event. */
+export async function updateChronicleEvent(
+  id: string,
+  fields: Partial<{
+    year: number;
+    title: string;
+    body: string | null;
+    target_type: string | null;
+    target_id: string | null;
+    tags: string[];
+  }>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — chronicle is unavailable.");
+  const { error } = await sb.from("chronicle_events").update(fields).eq("id", id);
+  if (error) throw new Error(`update chronicle event failed: ${error.message}`);
+}
+
+/** Delete a chronicle event by id. */
+export async function deleteChronicleEvent(id: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("No backend configured — chronicle is unavailable.");
+  const { error } = await sb.from("chronicle_events").delete().eq("id", id);
+  if (error) throw new Error(`delete chronicle event failed: ${error.message}`);
 }
 
 /** Replace a location's resource_overrides (pinned derived values). */
