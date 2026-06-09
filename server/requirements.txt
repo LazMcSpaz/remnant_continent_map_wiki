@@ -1,0 +1,12 @@
+# Local compute backend. GDAL is the one fussy dependency — prefer conda
+# (`conda install -c conda-forge gdal rasterio`) or ensure system GDAL is
+# installed before `pip install rasterio`.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+numpy>=1.26
+rasterio>=1.3          # DEM read/window/reproject
+pysheds>=0.3           # flow direction + accumulation, depression filling
+shapely>=2.0           # geometry ops + smoothing
+scikit-image>=0.22     # marching-squares contours (coastline/lakes)
+requests>=2.31         # 3DEP tile download
