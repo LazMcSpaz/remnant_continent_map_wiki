@@ -26,23 +26,25 @@
         <div id="map" aria-label="Map of the Remnant Continent (North America)"></div>
         <!-- Top-left stacked controls; anchored within the map area, below the header. -->
         <div class="map-controls-tl">
+          <!-- Editor toolbar stays free-floating (it's a row of tool buttons). -->
           <div id="editor-toolbar" class="editor-toolbar" role="toolbar"
                aria-label="Feature editing tools" hidden></div>
+          <!-- Dockable tool panels (collapsible, organized in one column). -->
           <div id="layers-panel" class="layers-panel" role="group"
                aria-label="Map layers" hidden></div>
-          <div id="corridors-panel" class="layers-panel" role="group"
-               aria-label="Corridors" hidden></div>
-          <div id="factions-panel" class="layers-panel" role="group"
-               aria-label="Factions" hidden></div>
-          <div id="isochrone-panel" class="layers-panel" role="group"
-               aria-label="Reachability isochrones" hidden></div>
+          <div id="climate-control" class="climate-control" role="group"
+               aria-label="Derived climate overlay" hidden></div>
           <div id="terrain-brush-panel" class="layers-panel" role="group"
                aria-label="Terrain brush" hidden></div>
+          <div id="sim-control" class="sim-control" role="group"
+               aria-label="Flow simulation" hidden></div>
+          <div id="isochrone-panel" class="layers-panel" role="group"
+               aria-label="Reachability isochrones" hidden></div>
+          <div id="factions-panel" class="layers-panel" role="group"
+               aria-label="Factions" hidden></div>
+          <div id="corridors-panel" class="layers-panel" role="group"
+               aria-label="Corridors" hidden></div>
         </div>
-        <div id="climate-control" class="climate-control" role="group"
-             aria-label="Derived climate overlay" hidden></div>
-        <div id="sim-control" class="sim-control" role="group"
-             aria-label="Flow simulation" hidden></div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -126,8 +126,79 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 0.4rem;
   max-height: calc(100% - 1.2rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 14.5rem;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+/* ---- Collapsible panel dock --------------------------------------------- */
+.dock-panel {
+  width: 100%;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.35rem 0.55rem;
+  font: inherit;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  user-select: none;
+}
+.dock-header:hover {
+  color: var(--text);
+}
+.dock-chevron {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  margin-right: 0.15rem;
+}
+.dock-panel.collapsed .dock-chevron {
+  transform: rotate(-45deg);
+}
+.dock-body {
+  padding: 0 0.55rem 0.5rem;
+  overflow: hidden;
+}
+.dock-panel.collapsed .dock-body {
+  display: none;
+}
+/* A docked panel drops its own card chrome + heading (the dock provides them). */
+.dock-managed {
+  background: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  padding: 0 !important;
+  width: 100%;
+  /* Panels that were absolutely-positioned (climate, sim) now flow in the dock. */
+  position: static !important;
+  inset: auto !important;
+  min-width: 0 !important;
+}
+.dock-managed > h2 {
+  display: none;
 }
 
 /* Floating editor toolbar. */
