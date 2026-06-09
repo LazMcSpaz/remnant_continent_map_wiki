@@ -30,6 +30,7 @@ import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
 import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-panel";
 import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
+import { installPanelDock } from "./notes/panel-dock";
 import { mountFactionsControl, type FactionsHost } from "./notes/factions-control";
 import { updateFaction, setFactionRelation, createFaction, setLocationFaction } from "./layers/features";
 import { buildRelationFn } from "./sim/relations";
@@ -517,6 +518,18 @@ async function boot(): Promise<void> {
     // Flow-simulation control (turn slider, play/step/reset).
     const simEl = document.getElementById("sim-control");
     if (simEl) mountSimControl(simEl, sim);
+
+    // Organize the tool panels into a single collapsible dock column (top-left).
+    // Map/Climate stay open by default; the heavier authoring tools start folded.
+    installPanelDock([
+      { id: "layers-panel", title: "Layers" },
+      { id: "climate-control", title: "Climate" },
+      { id: "terrain-brush-panel", title: "Terrain brush", collapsed: true },
+      { id: "sim-control", title: "Simulation", collapsed: true },
+      { id: "isochrone-panel", title: "Reachability", collapsed: true },
+      { id: "factions-panel", title: "Factions", collapsed: true },
+      { id: "corridors-panel", title: "Corridors", collapsed: true },
+    ]);
 
     if (!hasBackend()) {
       setStatus("No backend configured — viewer only. Set VITE_SUPABASE_* in web/.env.");
