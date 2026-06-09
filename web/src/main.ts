@@ -36,6 +36,8 @@ import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
 import { installPanelDock } from "./notes/panel-dock";
 import { mountFactionsControl, type FactionsHost } from "./notes/factions-control";
+import { mountChronicleControl, type ChronicleHost } from "./notes/chronicle-control";
+import { addChronicleEvent, deleteChronicleEvent } from "./layers/features";
 import { updateFaction, setFactionRelation, createFaction, setLocationFaction } from "./layers/features";
 import { buildRelationFn } from "./sim/relations";
 import { deriveFactionStats } from "./derived/faction-stats";
@@ -385,6 +387,27 @@ async function boot(): Promise<void> {
       factionsHost,
     );
 
+    // Chronicle panel: authored timeline of dated narrative events.
+    const chronicleHost: ChronicleHost = {
+      listEvents: () => data.chronicleEvents,
+      addEvent: async (event) => {
+        await addChronicleEvent(event);
+        applyData(await loadFeatures());
+      },
+      deleteEvent: async (id) => {
+        await deleteChronicleEvent(id);
+        applyData(await loadFeatures());
+      },
+      canEdit: () => hasBackend(),
+      reload: () => {
+        void loadFeatures().then((d) => applyData(d));
+      },
+    };
+    const chronicleControl = mountChronicleControl(
+      document.getElementById("chronicle-panel") ?? document.createElement("div"),
+      chronicleHost,
+    );
+
     // Reachability isochrones: route from a chosen origin city at a travel mode.
     const isochroneHost: IsochroneHost = {
       originCities: () =>
@@ -561,6 +584,7 @@ async function boot(): Promise<void> {
       if (groupPanel.isOpen()) groupPanel.refresh();
       corridorsControl.refresh();
       factionsControl.refresh();
+      chronicleControl.refresh();
       sim.onDataChanged();
       // Keep the open corridor's member highlight in sync after edits.
       const gid = groupPanel.currentGroupId();
@@ -604,6 +628,7 @@ async function boot(): Promise<void> {
       { id: "isochrone-panel", title: "Reachability", collapsed: true },
       { id: "factions-panel", title: "Factions", collapsed: true },
       { id: "corridors-panel", title: "Corridors", collapsed: true },
+      { id: "chronicle-panel", title: "Chronicle", collapsed: true },
     ]);
 
     if (!hasBackend()) {

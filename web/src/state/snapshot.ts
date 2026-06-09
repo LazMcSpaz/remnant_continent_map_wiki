@@ -27,7 +27,9 @@ import {
   addRouteGroupMember,
   addNote,
   createElevationEdit,
+  addChronicleEvent,
 } from "../layers/features";
+import type { ChronicleEvent } from "../layers/features";
 
 // Snapshot v2 adds route breaks + corridors (route groups). v1 bundles (no such
 // fields) still import fine — the new arrays default to empty.
@@ -75,6 +77,8 @@ export interface Snapshot {
   groupMembers: GroupMemberExport[];
   /** Terrain-brush elevation edits (brush params from payload). */
   elevationEdits: Array<{ lng: number; lat: number; radiusKm: number; deltaM: number }>;
+  /** Authored narrative timeline events. */
+  chronicleEvents: Array<Omit<ChronicleEvent, "id">>;
 }
 
 type RcLayer = "location" | "route" | "territory" | "terrain";
@@ -95,7 +99,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — nothing to export.");
 
-  const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members, edits] =
+  const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members, edits, chronicle] =
     await Promise.all([
       sb.from("factions").select("id,name,color,tier"),
       sb.from("faction_relations").select("faction_a,faction_b,level"),
@@ -110,9 +114,10 @@ export async function exportSnapshot(): Promise<Snapshot> {
       sb.from("route_groups").select("id,name,labels"),
       sb.from("route_group_members").select("group_id,route_id"),
       sb.from("elevation_edits_geojson").select("payload"),
+      sb.from("chronicle_events").select("year,title,body,target_type,target_id,tags").order("year", { ascending: true }),
     ]);
 
-  for (const r of [factions, relations, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members, edits]) {
+  for (const r of [factions, relations, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members, edits, chronicle]) {
     if (r.error) throw new Error(`Export failed: ${r.error.message}`);
   }
 
@@ -201,6 +206,17 @@ export async function exportSnapshot(): Promise<Snapshot> {
       radiusKm: e.payload.radiusKm,
       deltaM: e.payload.deltaM,
     })),
+    chronicleEvents: ((chronicle.data ?? []) as Array<{
+      year: number; title: string; body: string | null;
+      target_type: string | null; target_id: string | null; tags: string[];
+    }>).map((r) => ({
+      year: r.year,
+      title: r.title,
+      body: r.body ?? undefined,
+      targetType: r.target_type ?? undefined,
+      targetId: r.target_id ?? undefined,
+      tags: r.tags,
+    })),
   };
 }
 
@@ -233,6 +249,7 @@ export interface ImportResult {
   breaks: number;
   corridors: number;
   notes: number;
+  chronicleEvents: number;
   errors: string[];
 }
 
@@ -253,7 +270,7 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
 
   const result: ImportResult = {
     factions: 0, travelModes: 0, locations: 0, routes: 0, territories: 0, terrain: 0,
-    breaks: 0, corridors: 0, notes: 0, errors: [],
+    breaks: 0, corridors: 0, notes: 0, chronicleEvents: 0, errors: [],
   };
   const factionIdMap = new Map<string, string>();
   const locationIdMap = new Map<string, string>();
@@ -422,6 +439,24 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
       await createElevationEdit({ id: "", lng: ed.lng, lat: ed.lat, radiusKm: ed.radiusKm, deltaM: ed.deltaM });
     } catch (err) {
       result.errors.push(`elevation edit: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Chronicle events (no id remapping — they reference no other authored features
+  // by uuid in a way that needs remapping; target_id is informational only here).
+  for (const ce of snap.chronicleEvents ?? []) {
+    try {
+      await addChronicleEvent({
+        year: ce.year,
+        title: ce.title,
+        body: ce.body,
+        targetType: ce.targetType,
+        targetId: ce.targetId,
+        tags: ce.tags ?? [],
+      });
+      result.chronicleEvents++;
+    } catch (err) {
+      result.errors.push(`chronicle event "${ce.title}": ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
