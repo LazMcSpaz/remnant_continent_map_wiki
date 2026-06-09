@@ -127,6 +127,9 @@ export class TerrainBrush {
   }
 
   private onDown = (e: MapMouseEvent): void => {
+    // Stop the map's own drag-pan for this gesture so a drag PAINTS instead of
+    // panning (dragPan.disable alone isn't always honoured mid-gesture).
+    e.preventDefault();
     this.painting = true;
     this.lastStampAt = null;
     this.stamp(e.lngLat.lng, e.lngLat.lat);

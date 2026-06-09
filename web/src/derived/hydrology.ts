@@ -190,18 +190,51 @@ function buildGrid(block: DemBlock, inp: ClimateInputs, sample?: (lng: number, l
     strength[k] = (Math.log(accum[k] + 1) / denom) * 100;
   }
 
-  // --- Inland lakes: a depression cell holds water where the priority-flood
-  // had to raise it above its real elevation (filled > elev), AND enough rain
-  // drains into the basin to keep it full (accum gate) — so a dry desert pit
-  // isn't a lake but a wet mountain basin is. lakeDepth (m) drives nothing but
-  // the polygon membership here; the surface reads as flat water.
-  const LAKE_MIN_DEPTH_M = 8; // ignore sub-grid noise puddles
-  const LAKE_MIN_INFLOW = 1.0; // rainfall units gathered into the cell
-  const lakeMask = new Uint8Array(N);
+  // --- Inland lakes. A cell is a candidate where the priority-flood had to
+  // raise it well above its real elevation (a genuine basin, not a 1-cell DEM
+  // dimple). We then keep only LARGE, well-fed basins: a connected lake must
+  // span a minimum area AND gather meaningful inflow at its deepest point. This
+  // is what stops the land reading as pockmarked with countless micro-pools —
+  // only substantial inland seas survive.
+  const LAKE_MIN_DEPTH_M = 30; // a real basin, not a shallow dimple
+  const LAKE_MIN_CELLS = 12; // connected lake must be this big to render
+  const LAKE_MIN_PEAK_INFLOW = 6; // strongest cell in the basin must be well-fed
+  const candidate = new Uint8Array(N);
   for (let k = 0; k < N; k++) {
     if (ocean[k]) continue;
-    const depth = filled[k] - elev[k];
-    if (depth >= LAKE_MIN_DEPTH_M && accum[k] >= LAKE_MIN_INFLOW) lakeMask[k] = 1;
+    if (filled[k] - elev[k] >= LAKE_MIN_DEPTH_M) candidate[k] = 1;
+  }
+  // Connected-component pass: keep a component only if it's big and well-fed.
+  const lakeMask = new Uint8Array(N);
+  const comp = new Int32Array(N).fill(-1);
+  const stack: number[] = [];
+  for (let start = 0; start < N; start++) {
+    if (!candidate[start] || comp[start] >= 0) continue;
+    stack.length = 0;
+    stack.push(start);
+    comp[start] = start;
+    const members: number[] = [];
+    let peakInflow = 0;
+    while (stack.length) {
+      const c = stack.pop() as number;
+      members.push(c);
+      if (accum[c] > peakInflow) peakInflow = accum[c];
+      const ci = c % W;
+      const cj = (c / W) | 0;
+      for (const [dx, dy] of NEIGHBORS) {
+        const ni = ci + dx;
+        const nj = cj + dy;
+        if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
+        const nk = nj * W + ni;
+        if (candidate[nk] && comp[nk] < 0) {
+          comp[nk] = start;
+          stack.push(nk);
+        }
+      }
+    }
+    if (members.length >= LAKE_MIN_CELLS && peakInflow >= LAKE_MIN_PEAK_INFLOW) {
+      for (const m of members) lakeMask[m] = 1;
+    }
   }
 
   const colOf = (lng: number) => Math.floor(((lng - w) / (e - w)) * W);
