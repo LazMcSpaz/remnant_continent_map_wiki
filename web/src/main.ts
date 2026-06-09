@@ -18,6 +18,8 @@ import { ClimateOverlay } from "./derived/climate-overlay";
 import { CoastOverlay } from "./derived/coast-overlay";
 import { TerrainBrush } from "./derived/terrain-brush";
 import { mountTerrainBrushControl } from "./notes/terrain-brush-control";
+import { SurfaceBrush } from "./derived/surface-brush";
+import { mountSurfaceBrushControl } from "./notes/surface-brush-control";
 import { ChokepointOverlay } from "./derived/chokepoint-overlay";
 import { IsochroneOverlay } from "./derived/isochrone-overlay";
 import { mountIsochroneControl, type IsochroneHost } from "./notes/isochrone-control";
@@ -47,6 +49,7 @@ import { deriveCityResources } from "./derived/resources";
 import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
 import { createElevationEdit, deleteElevationEdit } from "./layers/features";
+import { createSurfaceEdit, deleteSurfaceEdit } from "./layers/features";
 
 const SEASON_NAMES = ["Midwinter", "Spring", "Midsummer", "Autumn"];
 function seasonName(season: number): string {
@@ -406,6 +409,34 @@ async function boot(): Promise<void> {
       void coast.build(data);
     }
 
+    // Surface/decay brush: paint authored surface alterations onto the map.
+    const surfaceBrush = new SurfaceBrush(map, {
+      initialEdits: data.surfaceEdits,
+      recalculate: async (edits) => {
+        // Persist: new edits (local "surf-" ids) are inserted; removed edits
+        // are deleted. Then reload so ids are canonical.
+        const prev = new Map(data.surfaceEdits.map((e) => [e.id, e]));
+        const keep = new Set(edits.map((e) => e.id));
+        try {
+          for (const e of edits) {
+            if (!prev.has(e.id)) await createSurfaceEdit(e);
+          }
+          for (const e of data.surfaceEdits) {
+            if (!keep.has(e.id)) await deleteSurfaceEdit(e.id);
+          }
+          data = await loadFeatures();
+        } catch (err) {
+          setStatus(err instanceof Error ? err.message : String(err), "error");
+        }
+        return data.surfaceEdits;
+      },
+      onStatus: setStatus,
+    });
+    // Always render the surface layer (including pre-loaded edits).
+    surfaceBrush.ensureRendered();
+    const surfaceBrushEl = document.getElementById("surface-brush-panel");
+    if (surfaceBrushEl && hasBackend()) mountSurfaceBrushControl(surfaceBrushEl, surfaceBrush);
+
     // Esc ends corridor add-members mode.
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && addingToGroupId) {
@@ -525,6 +556,7 @@ async function boot(): Promise<void> {
       { id: "layers-panel", title: "Layers" },
       { id: "climate-control", title: "Climate" },
       { id: "terrain-brush-panel", title: "Terrain brush", collapsed: true },
+      { id: "surface-brush-panel", title: "Surface brush", collapsed: true },
       { id: "sim-control", title: "Simulation", collapsed: true },
       { id: "isochrone-panel", title: "Reachability", collapsed: true },
       { id: "factions-panel", title: "Factions", collapsed: true },

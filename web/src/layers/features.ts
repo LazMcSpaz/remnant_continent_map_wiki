@@ -17,6 +17,7 @@ import type {
 } from "geojson";
 import { getSupabase } from "../state/supabase";
 import type { ElevationEdit } from "../derived/terrain";
+import type { SurfaceEdit } from "../derived/surface-brush";
 import type {
   Faction,
   FactionRelation,
@@ -60,7 +61,11 @@ export interface FeatureData {
   worldSettings: WorldSettingsGeo | null;
   /** Persisted terrain-brush elevation edits (soft Gaussian deltas). */
   elevationEdits: ElevationEdit[];
+  /** Persisted surface/decay brush edits (painted surface polygons). */
+  surfaceEdits: SurfaceEdit[];
 }
+
+export type { SurfaceEdit };
 
 export interface TerrainProps {
   id: string;
@@ -156,10 +161,11 @@ export async function loadFeatures(): Promise<FeatureData> {
     terrainRegions: [],
     worldSettings: null,
     elevationEdits: [],
+    surfaceEdits: [],
   };
   if (!sb) return data;
 
-  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes, editsRes] =
+  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes, editsRes, surfaceEditsRes] =
     await Promise.all([
       sb.from("factions").select("*"),
       sb.from("faction_relations").select("*"),
@@ -172,6 +178,7 @@ export async function loadFeatures(): Promise<FeatureData> {
       sb.from("route_group_members").select("*"),
       sb.from("world_settings_geojson").select("*").limit(1).maybeSingle(),
       sb.from("elevation_edits_geojson").select("*"),
+      sb.from("surface_edits_geojson").select("*"),
     ]);
 
   for (const res of [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
@@ -187,6 +194,16 @@ export async function loadFeatures(): Promise<FeatureData> {
       lat: r.payload.lat,
       radiusKm: r.payload.radiusKm,
       deltaM: r.payload.deltaM,
+    }),
+  );
+  // Surface/decay brush edits: payload carries brush params (lng/lat/radiusKm).
+  data.surfaceEdits = ((surfaceEditsRes.data ?? []) as Array<{ id: string; surface: string; payload: Record<string, number> }>).map(
+    (r) => ({
+      id: r.id,
+      surface: r.surface as SurfaceEdit["surface"],
+      lng: r.payload.lng,
+      lat: r.payload.lat,
+      radiusKm: r.payload.radiusKm,
     }),
   );
   data.routeGroups = (groupsRes.data ?? []) as RouteGroup[];
@@ -372,6 +389,39 @@ export async function createElevationEdit(edit: ElevationEdit): Promise<string> 
 /** Delete one persisted brush edit by id. */
 export async function deleteElevationEdit(id: string): Promise<void> {
   await rpc("delete_elevation_edit", { id });
+}
+
+// --- Surface/decay brush edits ----------------------------------------------
+
+const KM_PER_DEG_LAT_SURF = 111.32;
+
+/** Circle polygon (GeoJSON) approximating a surface-brush footprint. */
+function surfaceFootprint(edit: SurfaceEdit, steps = 32): Polygon {
+  const kmPerDegLng = KM_PER_DEG_LAT_SURF * Math.cos((edit.lat * Math.PI) / 180);
+  const ring: number[][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    ring.push([
+      edit.lng + (Math.cos(a) * edit.radiusKm) / kmPerDegLng,
+      edit.lat + (Math.sin(a) * edit.radiusKm) / KM_PER_DEG_LAT_SURF,
+    ]);
+  }
+  return { type: "Polygon", coordinates: [ring] };
+}
+
+/** Persist one surface edit; returns its new server id. */
+export async function createSurfaceEdit(edit: SurfaceEdit): Promise<string> {
+  const id = await rpc("create_surface_edit", {
+    geometry: surfaceFootprint(edit),
+    surface: edit.surface,
+    payload: { lng: edit.lng, lat: edit.lat, radiusKm: edit.radiusKm },
+  });
+  return id as string;
+}
+
+/** Delete one persisted surface edit by id. */
+export async function deleteSurfaceEdit(id: string): Promise<void> {
+  await rpc("delete_surface_edit", { id });
 }
 
 // --- Route breaks -----------------------------------------------------------
