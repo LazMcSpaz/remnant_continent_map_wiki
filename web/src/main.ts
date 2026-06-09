@@ -36,6 +36,8 @@ import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-
 import { mountCorridorsControl, type CorridorsHost } from "./notes/corridors-control";
 import { installPanelDock } from "./notes/panel-dock";
 import { mountFactionsControl, type FactionsHost } from "./notes/factions-control";
+import { mountFactionDashboard, type FactionDashboardHost } from "./notes/faction-dashboard-control";
+import { summarizeFactions } from "./derived/faction-summary";
 import { updateFaction, setFactionRelation, createFaction, setLocationFaction } from "./layers/features";
 import { buildRelationFn } from "./sim/relations";
 import { deriveFactionStats } from "./derived/faction-stats";
@@ -356,6 +358,22 @@ async function boot(): Promise<void> {
       factionsHost,
     );
 
+    // Faction dashboard: consolidated read-only overview of every faction.
+    const dashboardHost: FactionDashboardHost = {
+      summaries: () =>
+        summarizeFactions({
+          factions: data.factions,
+          locationDetails: data.locationDetails,
+          relations: data.factionRelations,
+          territories: data.territories,
+          wealthOf: (id) => (sim.isVisible() ? sim.wealthFor(id) : null),
+        }),
+    };
+    const factionDashboard = mountFactionDashboard(
+      document.getElementById("faction-dashboard-panel") ?? document.createElement("div"),
+      dashboardHost,
+    );
+
     // Reachability isochrones: route from a chosen origin city at a travel mode.
     const isochroneHost: IsochroneHost = {
       originCities: () =>
@@ -532,6 +550,7 @@ async function boot(): Promise<void> {
       if (groupPanel.isOpen()) groupPanel.refresh();
       corridorsControl.refresh();
       factionsControl.refresh();
+      factionDashboard.refresh();
       sim.onDataChanged();
       // Keep the open corridor's member highlight in sync after edits.
       const gid = groupPanel.currentGroupId();
@@ -575,6 +594,7 @@ async function boot(): Promise<void> {
       { id: "isochrone-panel", title: "Reachability", collapsed: true },
       { id: "factions-panel", title: "Factions", collapsed: true },
       { id: "corridors-panel", title: "Corridors", collapsed: true },
+      { id: "faction-dashboard-panel", title: "Faction dashboard", collapsed: true },
     ]);
 
     if (!hasBackend()) {

@@ -423,6 +423,13 @@ body {
   background: var(--bg);
   cursor: pointer;
 }
+/* ---- Faction dashboard stat grid ----------------------------------------- */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.1rem 0.5rem;
+  margin-top: 0.25rem;
+}
 .wiki-conn-pressure {
   display: flex;
   align-items: center;
