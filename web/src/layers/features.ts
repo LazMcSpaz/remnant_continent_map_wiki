@@ -45,6 +45,15 @@ export interface ChronicleEvent {
   tags: string[];
 }
 
+/** A free-form map annotation not tied to a feature (migration 0021). */
+export interface MapAnnotation {
+  id: string;
+  kind: "marker" | "line" | "region";
+  label: string | null;
+  color: string;
+  geometry: Point | LineString | Polygon;
+}
+
 export interface FeatureData {
   factions: Map<string, Faction>;
   /** Pairwise faction stance rows (allies/friendly/tense/hostile). */
@@ -76,6 +85,8 @@ export interface FeatureData {
   surfaceEdits: SurfaceEdit[];
   /** Authored narrative timeline events. */
   chronicleEvents: ChronicleEvent[];
+  /** Free-form map annotations (markers/lines/regions). */
+  annotations: MapAnnotation[];
 }
 
 export type { SurfaceEdit };
@@ -176,10 +187,11 @@ export async function loadFeatures(): Promise<FeatureData> {
     elevationEdits: [],
     surfaceEdits: [],
     chronicleEvents: [],
+    annotations: [],
   };
   if (!sb) return data;
 
-  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes, editsRes, surfaceEditsRes, chronicleRes] =
+  const [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes, worldRes, editsRes, surfaceEditsRes, chronicleRes, annotationsRes] =
     await Promise.all([
       sb.from("factions").select("*"),
       sb.from("faction_relations").select("*"),
@@ -194,6 +206,7 @@ export async function loadFeatures(): Promise<FeatureData> {
       sb.from("elevation_edits_geojson").select("*"),
       sb.from("surface_edits_geojson").select("*"),
       sb.from("chronicle_events").select("*").order("year", { ascending: true }),
+      sb.from("map_annotations_geojson").select("*"),
     ]);
 
   for (const res of [factionsRes, relationsRes, locationsRes, routesRes, territoriesRes, terrainRes, breaksRes, groupsRes, membersRes]) {
@@ -217,6 +230,20 @@ export async function loadFeatures(): Promise<FeatureData> {
     targetType: r.target_type ?? undefined,
     targetId: r.target_id ?? undefined,
     tags: r.tags,
+  }));
+  // Free-form map annotations (markers/lines/regions).
+  data.annotations = ((annotationsRes.data ?? []) as Array<{
+    id: string;
+    kind: MapAnnotation["kind"];
+    label: string | null;
+    color: string;
+    geometry: Point | LineString | Polygon;
+  }>).map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    label: r.label,
+    color: r.color,
+    geometry: r.geometry,
   }));
   data.factionRelations = (relationsRes.data ?? []) as FactionRelation[];
   // Terrain-brush edits: payload carries the brush params (lng/lat/radius/delta).
@@ -859,6 +886,29 @@ export async function deleteChronicleEvent(id: string): Promise<void> {
   if (!sb) throw new Error("No backend configured — chronicle is unavailable.");
   const { error } = await sb.from("chronicle_events").delete().eq("id", id);
   if (error) throw new Error(`delete chronicle event failed: ${error.message}`);
+}
+
+// --- Map annotations (markers / lines / regions) ----------------------------
+
+/** Create a free-form annotation; returns its new id. */
+export async function createMapAnnotation(
+  geometry: Point | LineString | Polygon,
+  kind: MapAnnotation["kind"],
+  label: string | null,
+  color: string,
+): Promise<string> {
+  const id = await rpc("create_map_annotation", { geometry, kind, label, color });
+  return id as string;
+}
+
+/** Update an annotation's label + color (geometry edits re-create instead). */
+export async function updateMapAnnotation(id: string, label: string | null, color: string): Promise<void> {
+  await rpc("update_map_annotation", { id, label, color });
+}
+
+/** Delete an annotation by id. */
+export async function deleteMapAnnotation(id: string): Promise<void> {
+  await rpc("delete_map_annotation", { id });
 }
 
 /** Replace a location's resource_overrides (pinned derived values). */

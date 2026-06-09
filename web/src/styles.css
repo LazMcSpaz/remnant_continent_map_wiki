@@ -286,6 +286,13 @@ body {
     0 0 2px #0e1116, 0 0 2px #0e1116, 0 0 3px #0e1116, 0 1px 2px #0e1116;
   transform: translateZ(0);
 }
+/* Annotation labels: a hair smaller + lighter than city names, italicized so
+   author notes read as distinct from places. */
+.anno-label {
+  font-size: 0.68rem;
+  font-style: italic;
+  color: #e0d6c2;
+}
 
 /* ---- Climate control (derived overlay) ----------------------------------- */
 .climate-control {

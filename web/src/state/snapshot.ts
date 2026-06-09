@@ -28,6 +28,7 @@ import {
   addNote,
   createElevationEdit,
   addChronicleEvent,
+  createMapAnnotation,
 } from "../layers/features";
 import type { ChronicleEvent } from "../layers/features";
 
@@ -79,6 +80,8 @@ export interface Snapshot {
   elevationEdits: Array<{ lng: number; lat: number; radiusKm: number; deltaM: number }>;
   /** Authored narrative timeline events. */
   chronicleEvents: Array<Omit<ChronicleEvent, "id">>;
+  /** Free-form map annotations (markers/lines/regions). */
+  annotations: Array<{ kind: string; label: string | null; color: string; geometry: unknown }>;
 }
 
 type RcLayer = "location" | "route" | "territory" | "terrain";
@@ -99,7 +102,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
   const sb = getSupabase();
   if (!sb) throw new Error("No backend configured — nothing to export.");
 
-  const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members, edits, chronicle] =
+  const [factions, relations, travelModes, locs, routes, terrs, terrain, world, notes, breaks, groups, members, edits, chronicle, annotations] =
     await Promise.all([
       sb.from("factions").select("id,name,color,tier"),
       sb.from("faction_relations").select("faction_a,faction_b,level"),
@@ -115,9 +118,10 @@ export async function exportSnapshot(): Promise<Snapshot> {
       sb.from("route_group_members").select("group_id,route_id"),
       sb.from("elevation_edits_geojson").select("payload"),
       sb.from("chronicle_events").select("year,title,body,target_type,target_id,tags").order("year", { ascending: true }),
+      sb.from("map_annotations_geojson").select("kind,label,color,geometry"),
     ]);
 
-  for (const r of [factions, relations, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members, edits, chronicle]) {
+  for (const r of [factions, relations, travelModes, locs, routes, terrs, terrain, notes, breaks, groups, members, edits, chronicle, annotations]) {
     if (r.error) throw new Error(`Export failed: ${r.error.message}`);
   }
 
@@ -217,6 +221,12 @@ export async function exportSnapshot(): Promise<Snapshot> {
       targetId: r.target_id ?? undefined,
       tags: r.tags,
     })),
+    annotations: ((annotations.data ?? []) as Array<{ kind: string; label: string | null; color: string; geometry: unknown }>).map((r) => ({
+      kind: r.kind,
+      label: r.label,
+      color: r.color,
+      geometry: r.geometry,
+    })),
   };
 }
 
@@ -250,6 +260,7 @@ export interface ImportResult {
   corridors: number;
   notes: number;
   chronicleEvents: number;
+  annotations: number;
   errors: string[];
 }
 
@@ -270,7 +281,7 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
 
   const result: ImportResult = {
     factions: 0, travelModes: 0, locations: 0, routes: 0, territories: 0, terrain: 0,
-    breaks: 0, corridors: 0, notes: 0, chronicleEvents: 0, errors: [],
+    breaks: 0, corridors: 0, notes: 0, chronicleEvents: 0, annotations: 0, errors: [],
   };
   const factionIdMap = new Map<string, string>();
   const locationIdMap = new Map<string, string>();
@@ -457,6 +468,17 @@ export async function importSnapshot(snap: Snapshot): Promise<ImportResult> {
       result.chronicleEvents++;
     } catch (err) {
       result.errors.push(`chronicle event "${ce.title}": ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Map annotations (markers/lines/regions) — geometry travels as-is.
+  for (const an of snap.annotations ?? []) {
+    try {
+      const kind = (["marker", "line", "region"].includes(an.kind) ? an.kind : "marker") as "marker" | "line" | "region";
+      await createMapAnnotation(an.geometry as Point | LineString | Polygon, kind, an.label, an.color);
+      result.annotations++;
+    } catch (err) {
+      result.errors.push(`annotation: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

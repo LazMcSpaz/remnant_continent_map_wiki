@@ -8,7 +8,7 @@ import type { ClimateOverlay } from "./climate-overlay";
 import type { SimController } from "../sim/sim-controller";
 
 interface Row {
-  id: LayerGroup | "climate" | "sim" | "chokepoints" | "coast" | "topology" | "roads" | "realnames";
+  id: LayerGroup | "climate" | "sim" | "chokepoints" | "coast" | "topology" | "roads" | "realnames" | "annotations";
   label: string;
   swatch: string;
   /** Initial checked state. */
@@ -19,6 +19,7 @@ const ROWS: Row[] = [
   { id: "topology", label: "Topology", swatch: "#7d8a6e", on: false },
   { id: "roads", label: "Roads", swatch: "#8a8f96", on: false },
   { id: "realnames", label: "Real names", swatch: "#cfd6dd", on: false },
+  { id: "annotations", label: "Annotations", swatch: "#e0af68", on: true },
   { id: "coast", label: "New coastline", swatch: "#3fa7d6", on: true },
   { id: "sim", label: "Simulation (pressure)", swatch: "#d23b3b", on: false },
   { id: "chokepoints", label: "Chokepoints", swatch: "#d23b3b", on: false },
@@ -39,6 +40,7 @@ export function mountLayersPanel(
   onTopology: (visible: boolean) => void,
   onRoads: (visible: boolean) => void,
   onRealNames: (visible: boolean) => void,
+  onAnnotations: (visible: boolean) => void,
 ): void {
   container.replaceChildren();
   const heading = document.createElement("h2");
@@ -68,6 +70,7 @@ export function mountLayersPanel(
       else if (row.id === "topology") onTopology(cb.checked);
       else if (row.id === "roads") onRoads(cb.checked);
       else if (row.id === "realnames") onRealNames(cb.checked);
+      else if (row.id === "annotations") onAnnotations(cb.checked);
       else setGroupVisible(map, row.id, cb.checked);
     });
 

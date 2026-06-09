@@ -54,6 +54,10 @@ import { growingWarmth } from "./derived/climate";
 import { deriveCityResources } from "./derived/resources";
 import { addRouteBreak, setRouteBreakActive, deleteRouteBreak } from "./layers/features";
 import { updateWorldSettings } from "./layers/features";
+import { AnnotationOverlay } from "./derived/annotation-overlay";
+import { AnnotateTool } from "./derived/annotate-tool";
+import { mountAnnotateControl } from "./notes/annotate-control";
+import { createMapAnnotation } from "./layers/features";
 import { createElevationEdit, deleteElevationEdit } from "./layers/features";
 import { createSurfaceEdit, deleteSurfaceEdit } from "./layers/features";
 import { buildSearchIndex } from "./notes/search-index";
@@ -121,6 +125,9 @@ async function boot(): Promise<void> {
     // Topology overlay: hillshade + contour lines baked from the real DEM, shown
     // on demand. Lazy — built on first toggle-on.
     const topology = new TopologyOverlay(map, setStatus);
+    // Free-form map annotations (markers/lines/regions), rendered from data.
+    const annotations = new AnnotationOverlay(map);
+    annotations.update(data.annotations);
     // Derived climate overlay (Phase 2): a static raster, baked once on toggle.
     const climate = new ClimateOverlay(map, setStatus);
     climate.recompute(data);
@@ -426,6 +433,24 @@ async function boot(): Promise<void> {
       dashboardHost,
     );
 
+    // Annotate & measure: free-form markers/lines/regions (persisted) + an
+    // ephemeral distance/area measure tool. Persisting needs a backend.
+    const annotateTool = new AnnotateTool(map, {
+      saveAnnotation: async (kind, coords, label, color) => {
+        const geometry =
+          kind === "marker"
+            ? { type: "Point" as const, coordinates: coords[0] }
+            : kind === "line"
+              ? { type: "LineString" as const, coordinates: coords }
+              : { type: "Polygon" as const, coordinates: [[...coords, coords[0]]] };
+        await createMapAnnotation(geometry, kind, label, color);
+        applyData(await loadFeatures());
+      },
+      onStatus: setStatus,
+    });
+    const annotateEl = document.getElementById("annotate-panel");
+    if (annotateEl) mountAnnotateControl(annotateEl, annotateTool);
+
     // Reachability isochrones: route from a chosen origin city at a travel mode.
     const isochroneHost: IsochroneHost = {
       originCities: () =>
@@ -604,6 +629,7 @@ async function boot(): Promise<void> {
       factionsControl.refresh();
       chronicleControl.refresh();
       factionDashboard.refresh();
+      annotations.update(next.annotations);
       sim.onDataChanged();
       // Keep the open corridor's member highlight in sync after edits.
       const gid = groupPanel.currentGroupId();
@@ -629,6 +655,7 @@ async function boot(): Promise<void> {
         (visible) => topology.setVisible(visible),
         (visible) => setRoadsVisible(map, visible),
         (visible) => setRealNamesVisible(map, visible),
+        (visible) => annotations.setVisible(visible),
       );
     }
 
@@ -649,6 +676,7 @@ async function boot(): Promise<void> {
       { id: "corridors-panel", title: "Corridors", collapsed: true },
       { id: "chronicle-panel", title: "Chronicle", collapsed: true },
       { id: "faction-dashboard-panel", title: "Faction dashboard", collapsed: true },
+      { id: "annotate-panel", title: "Annotate & measure", collapsed: true },
     ]);
 
     if (!hasBackend()) {
