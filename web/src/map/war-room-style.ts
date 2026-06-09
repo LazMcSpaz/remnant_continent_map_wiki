@@ -53,6 +53,65 @@ function isLanduse(sl: string): boolean {
   return sl === "landuse" || sl === "landcover" || sl === "park";
 }
 
+/** Brighter road color used when the Roads layer is toggled on. */
+const ROAD_ON_MAJOR = "#8a8f96";
+const ROAD_ON_MINOR = "#6b717a";
+
+/**
+ * Toggle the basemap road lines (`source-layer === "transportation"`) between
+ * the war-room dim palette and a clearly-visible brighter palette.
+ * Safe to call at any zoom / style version.
+ */
+export function setRoadsVisible(map: MlMap, visible: boolean): void {
+  const style = map.getStyle();
+  if (!style?.layers) return;
+  for (const layer of style.layers as LayerSpecification[]) {
+    if (layer.id.startsWith("rc-")) continue;
+    const sl = (layer as { "source-layer"?: string })["source-layer"] ?? "";
+    if (layer.type !== "line" || sl !== "transportation") continue;
+    try {
+      if (visible) {
+        map.setPaintProperty(layer.id, "line-color", [
+          "match",
+          ["get", "class"],
+          ["motorway", "trunk", "primary"], ROAD_ON_MAJOR,
+          ROAD_ON_MINOR,
+        ]);
+        map.setPaintProperty(layer.id, "line-opacity", 1);
+      } else {
+        map.setPaintProperty(layer.id, "line-color", [
+          "match",
+          ["get", "class"],
+          ["motorway", "trunk", "primary"], WAR_ROOM.roadMajor,
+          WAR_ROOM.roadMinor,
+        ]);
+        map.setPaintProperty(layer.id, "line-opacity", 0.9);
+      }
+    } catch {
+      // Layer doesn't support the property — skip.
+    }
+  }
+}
+
+/**
+ * Toggle the basemap's real-world label layers (type === "symbol"). They are
+ * hidden by `applyWarRoomStyle`; this restores them when the user opts in.
+ * Layers starting with `rc-` (our own overlays) are never touched.
+ */
+export function setRealNamesVisible(map: MlMap, visible: boolean): void {
+  const style = map.getStyle();
+  if (!style?.layers) return;
+  for (const layer of style.layers as LayerSpecification[]) {
+    if (layer.id.startsWith("rc-")) continue;
+    if (layer.type !== "symbol") continue;
+    try {
+      map.setLayoutProperty(layer.id, "visibility", visible ? "visible" : "none");
+    } catch {
+      // Layer doesn't support visibility — skip.
+    }
+  }
+}
+
 /**
  * Repaint the loaded basemap into the war-room look and hide real labels.
  * Safe to call again after a style reload. Only touches basemap layers (those

@@ -26,6 +26,8 @@ import { SimController } from "./sim/sim-controller";
 import { mountSimControl } from "./sim/sim-control";
 import { mountClimateControl } from "./derived/climate-control";
 import { mountLayersPanel } from "./derived/layers-control";
+import { TopologyOverlay } from "./derived/topology-overlay";
+import { setRoadsVisible, setRealNamesVisible } from "./map/war-room-style";
 import { TerrainPanel, type TerrainHost } from "./notes/terrain-panel";
 import { RoutePanel, type RouteHost, type RouteDetail } from "./notes/route-panel";
 import { GroupPanel, type GroupHost, type GroupMemberView } from "./notes/group-panel";
@@ -107,6 +109,9 @@ async function boot(): Promise<void> {
     // default — it's the premise of the world — so build it now.
     const coast = new CoastOverlay(map, setStatus);
     coast.setVisible(true, data);
+    // Topology overlay: hillshade + contour lines baked from the real DEM, shown
+    // on demand. Lazy — built on first toggle-on.
+    const topology = new TopologyOverlay(map, setStatus);
     // Derived climate overlay (Phase 2): a static raster, baked once on toggle.
     const climate = new ClimateOverlay(map, setStatus);
     climate.recompute(data);
@@ -502,7 +507,8 @@ async function boot(): Promise<void> {
       if (wiki.isOpen()) wiki.rerenderActive();
     });
 
-    // Layers panel: toggle terrain / territories / routes / labels / climate.
+    // Layers panel: toggle terrain / territories / routes / labels / climate /
+    // topology / roads / real-world names.
     const layersEl = document.getElementById("layers-panel");
     if (layersEl) {
       mountLayersPanel(
@@ -512,6 +518,9 @@ async function boot(): Promise<void> {
         sim,
         (visible) => chokepoints.setVisible(visible, graph, data.routes),
         (visible) => coast.setVisible(visible, data),
+        (visible) => topology.setVisible(visible),
+        (visible) => setRoadsVisible(map, visible),
+        (visible) => setRealNamesVisible(map, visible),
       );
     }
 
