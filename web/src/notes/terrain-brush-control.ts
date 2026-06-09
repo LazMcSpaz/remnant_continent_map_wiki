@@ -58,6 +58,16 @@ export function mountTerrainBrushControl(container: HTMLElement, brush: TerrainB
   actions.append(recalc, clear);
   body.append(actions);
 
+  // Undo + Redo.
+  const historyRow = document.createElement("div");
+  historyRow.className = "climate-metrics";
+  const undoBtn = button("Undo");
+  undoBtn.addEventListener("click", () => brush.undo());
+  const redoBtn = button("Redo");
+  redoBtn.addEventListener("click", () => brush.redo());
+  historyRow.append(undoBtn, redoBtn);
+  body.append(historyRow);
+
   const note = document.createElement("p");
   note.className = "climate-note";
   note.textContent = "Drag on the map to sculpt; press Recalculate to reflow rivers & coast.";

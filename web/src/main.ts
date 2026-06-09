@@ -150,7 +150,7 @@ async function boot(): Promise<void> {
         if (!detail.lngLat) return null;
         const inp = climateInputs(data.worldSettings);
         const overrides = (detail.resources ?? {}) as Record<string, number>;
-        return deriveCityResources(detail.lngLat, overrides, inp);
+        return deriveCityResources(detail.lngLat, overrides, inp, data.elevationEdits);
       },
       getPressure: (detail) => {
         if (!sim.isVisible()) return null;
@@ -402,6 +402,9 @@ async function boot(): Promise<void> {
         coast.setEdits(data.elevationEdits);
         coast.setVisible(true);
         await coast.build(data);
+        // Climate samples the same edited terrain, so re-bake it too.
+        climate.setEdits(data.elevationEdits);
+        climate.recompute(data);
         return data.elevationEdits;
       },
       onStatus: setStatus,
@@ -412,6 +415,8 @@ async function boot(): Promise<void> {
     if (data.elevationEdits.length > 0) {
       coast.setEdits(data.elevationEdits);
       void coast.build(data);
+      // Seed climate with the persisted edits so it bakes with the right terrain.
+      climate.setEdits(data.elevationEdits);
     }
 
     // Surface/decay brush: paint authored surface alterations onto the map.
