@@ -35,6 +35,27 @@ basemap options.
 | `npm run build` | Typecheck (`tsc --noEmit`) then production build to `dist/`. |
 | `npm run typecheck` | Types only. |
 | `npm run preview` | Serve the built `dist/`. |
+| `npm run test` | Run the Vitest unit suite once. |
+| `npm run test:watch` | Vitest in watch mode. |
+
+## Tests
+
+`src/**/*.test.ts` (Vitest) cover the **pure derived/sim logic** — the math the
+whole world cascades from — with no DOM, network, or DEM-tile dependency. They
+lock in the numerical behaviour validated during development as permanent
+regression guards:
+
+- **climate** — post-shift temperature field (Peru frozen, old-Arctic tropical,
+  not inverted), growing-warmth optimum band, biomes, sea-level bulge, °F.
+- **travel** — status factors (damaged 2×, destroyed 4×, never severed), formats.
+- **network-analysis** — the lone bridge scores 1.0 on betweenness + cut-impact;
+  isochrones propagate a damaged leg's slowdown downstream.
+- **sim engine** — a severed chokepoint starves cities behind it; trade is
+  relationship-gated (ally > tense > hostile); wealth accrues to the producer;
+  a step is deterministic.
+- **faction-stats / baselines / relations / noise / terrain** — pop-weighted
+  tech, tech multiplier, symmetric relations, noise determinism, the Gaussian
+  brush falloff.
 
 ## Structure
 

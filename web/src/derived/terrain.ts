@@ -26,8 +26,8 @@ export interface ElevationEdit {
 
 const KM_PER_DEG_LAT = 111.32;
 
-/** Gaussian falloff value (0..1) of an edit at a point. */
-function editWeight(edit: ElevationEdit, lng: number, lat: number): number {
+/** Gaussian falloff value (0..1) of an edit at a point. Exported for testing. */
+export function editWeight(edit: ElevationEdit, lng: number, lat: number): number {
   const dLatKm = (lat - edit.lat) * KM_PER_DEG_LAT;
   const dLngKm = (lng - edit.lng) * KM_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180);
   const distKm = Math.hypot(dLatKm, dLngKm);
