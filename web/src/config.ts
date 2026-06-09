@@ -71,3 +71,11 @@ export function readMapConfig(): MapConfig {
     ),
   };
 }
+
+/** Local compute backend URL (the Python server). When set, the app derives
+ *  water/coast from it (high-res, real hydrology) instead of sampling DEM tiles
+ *  in the browser. Empty = browser-only mode (the old behaviour). */
+export function computeUrl(): string | null {
+  const u = str(import.meta.env.VITE_COMPUTE_URL, "");
+  return u === "" ? null : u.replace(/\/$/, "");
+}

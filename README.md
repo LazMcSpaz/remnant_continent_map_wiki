@@ -251,10 +251,21 @@ Indicative, not final — see `docs/data-model.md` once it exists.
 
 ## Notes on running it
 
-The full tool is best developed as a local project (it needs to fetch tiles and
-read/write files freely) rather than a single sandboxed page. Individual pieces
-can be prototyped in isolation. Setup instructions will live here once Phase 1
-scaffolding exists.
+This is a **personal, local-first** tool. The browser app (`web/`) is the UI;
+the heavy geospatial work runs in a **local Python compute backend** (`server/`)
+that reads high-resolution DEMs (10 m 3DEP) from your disk and does real
+hydrology — flow accumulation, depression-fill lakes, post-shift coastline — at
+a fidelity a browser tab can't reach. The web app calls it via `VITE_COMPUTE_URL`
+and renders the GeoJSON it returns; with no backend configured it falls back to
+the lighter browser-only DEM sampling.
+
+```
+web/     Vite + TS + MapLibre UI (authoring, overlays, simulation)
+server/  Python (FastAPI + GDAL/pysheds) local compute — see server/README.md
+```
+
+Run `server/` (DEM download + service) and `web/` (dev server) together on your
+machine. See each directory's README for setup.
 
 ## License
 

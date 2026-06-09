@@ -20,6 +20,7 @@ import { traceWorld, lakePolygons } from "./world-vector";
 import { getHydrology } from "./hydrology";
 import { renderRivers } from "./river-render";
 import { makeCompositeSampler, type ElevationEdit } from "./terrain";
+import { hasComputeBackend, deriveWater } from "./compute-client";
 import { WATER_COLOR } from "../map/war-room-style";
 
 const SEA_SRC = "rc-coast-sea";
@@ -93,7 +94,22 @@ export class CoastOverlay {
     const [w, s, e, n] = AOI.climateExtent;
     this.onStatus("Recomputing terrain (coast & rivers)…");
     try {
-      // Higher zoom + tile budget → sharper detail; loadDemBlock fits the budget.
+      // Preferred path: the local compute backend derives water/coast from real
+      // high-res DEM + hydrology (no browser memory limit). Falls back to the
+      // browser pipeline if no backend is configured.
+      if (hasComputeBackend()) {
+        const water = await deriveWater(inp, this.edits);
+        this.render(
+          water.sea as FeatureCollection,
+          water.rivers as FeatureCollection<LineString>,
+          water.lakes as FeatureCollection,
+        );
+        const elapsed = (water.meta?.elapsed_s as number | undefined) ?? undefined;
+        this.onStatus(`Terrain recomputed${elapsed != null ? ` (${elapsed}s)` : ""}.`);
+        return;
+      }
+
+      // Browser fallback. Higher zoom + tile budget → sharper detail.
       if (!this.block) this.block = await loadDemBlock(w, s, e, n, 7, 900);
       // Water is decided by the STRUCTURAL field: base DEM + brush edits, with
       // NO detail noise. (Noise is fine-grain ±tens-to-hundreds of metres; if it
