@@ -18,6 +18,8 @@ import type { ClimateInputs } from "./climate";
 import { cropSuitabilityAt } from "./climate";
 import { sampleClimate, type SampledClimate } from "./climate-sample";
 import { getHydrology } from "./hydrology";
+import { makeCompositeSampler, type ElevationEdit } from "./terrain";
+import type { DemBlock } from "./elevation";
 
 export const RESOURCE_KINDS = ["food", "water", "energy", "production"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
@@ -93,14 +95,24 @@ export interface CityResources {
  * - water:      rainfall + proximity to water (100 if submerged)
  * - energy:     insolation (by latitude, less when cloudy) + wind (band/coast/elevation)
  * - production: buildable land (cover × elevation/ruggedness factor)
+ *
+ * Pass `edits` to drain hydrology over the composite terrain (base DEM + edits)
+ * so a city's water resource reflects sculpted terrain.
  */
 export async function deriveCityResources(
   lngLat: [number, number],
   overrides: Record<string, number>,
   inp: ClimateInputs,
+  edits?: ElevationEdit[],
 ): Promise<CityResources> {
   const sc = await sampleClimate(lngLat, inp);
-  const hydro = await getHydrology(inp);
+  const editsKey = edits && edits.length > 0 ? edits.map((e) => e.id).join(",") : "";
+  const sampler = edits && edits.length > 0
+    ? (blk: DemBlock) => makeCompositeSampler(blk, edits, { detail: false })
+    : undefined;
+  const hydro = sampler !== undefined
+    ? await getHydrology(inp, { editsKey, sampler })
+    : await getHydrology(inp);
   const river = hydro.waterAt(lngLat[0], lngLat[1]); // 0..100 nearby river strength
   const baseline = baselinesFor(lngLat, sc, river, inp);
 

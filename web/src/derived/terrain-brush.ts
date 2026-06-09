@@ -53,6 +53,10 @@ export class TerrainBrush {
   private added = false;
   private lastStampAt: { lng: number; lat: number } | null = null;
   private dirty = false;
+  /** Undo stack: each entry is a snapshot of edits before a paint gesture. */
+  private undoStack: ElevationEdit[][] = [];
+  /** Redo stack: cleared on any new gesture; restored by undo. */
+  private redoStack: ElevationEdit[][] = [];
 
   constructor(map: MlMap, host: TerrainBrushHost) {
     this.map = map;
@@ -107,6 +111,8 @@ export class TerrainBrush {
 
   /** Clear all edits and recalculate back to the base world. */
   clearEdits(): void {
+    this.undoStack = [];
+    this.redoStack = [];
     this.edits = [];
     this.dirty = true;
     this.renderStamps();
@@ -115,6 +121,59 @@ export class TerrainBrush {
       this.dirty = false;
       this.renderStamps();
     });
+  }
+
+  /** Undo the last paint gesture (restores the edit list to before that drag). */
+  undo(): void {
+    const snap = this.undoStack.pop();
+    if (!snap) return;
+    this.redoStack.push([...this.edits]);
+    this.edits = snap;
+    this.dirty = true;
+    this.renderStamps();
+    void this.host.recalculate(this.edits).then((canonical) => {
+      this.edits = canonical;
+      this.dirty = false;
+      this.renderStamps();
+    });
+  }
+
+  /** Redo the most recently undone gesture. */
+  redo(): void {
+    const snap = this.redoStack.pop();
+    if (!snap) return;
+    this.undoStack.push([...this.edits]);
+    this.edits = snap;
+    this.dirty = true;
+    this.renderStamps();
+    void this.host.recalculate(this.edits).then((canonical) => {
+      this.edits = canonical;
+      this.dirty = false;
+      this.renderStamps();
+    });
+  }
+
+  /** Remove the most recent single edit stamp (fine-grained undo). */
+  removeLast(): void {
+    if (this.edits.length === 0) return;
+    this.undoStack.push([...this.edits]);
+    this.redoStack = [];
+    this.edits = this.edits.slice(0, -1);
+    this.dirty = true;
+    this.renderStamps();
+    void this.host.recalculate(this.edits).then((canonical) => {
+      this.edits = canonical;
+      this.dirty = false;
+      this.renderStamps();
+    });
+  }
+
+  canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
   }
 
   /** Persist + recompute the world from the current edits. */
@@ -132,6 +191,10 @@ export class TerrainBrush {
     e.preventDefault();
     this.painting = true;
     this.lastStampAt = null;
+    // Push an undo snapshot ONCE per gesture (mousedown), before any stamps.
+    // This means one full drag = one undo step. Clear redo on any new gesture.
+    this.undoStack.push([...this.edits]);
+    this.redoStack = [];
     this.stamp(e.lngLat.lng, e.lngLat.lat);
   };
 

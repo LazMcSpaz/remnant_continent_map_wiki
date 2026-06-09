@@ -33,6 +33,7 @@ import {
   type RegionDerived,
 } from "./climate";
 import { loadDemBlock, elevationFromBlock, type DemBlock } from "./elevation";
+import { makeCompositeSampler, type ElevationEdit } from "./terrain";
 
 const SRC = "rc-climate";
 const FILL = "rc-climate-fill";
@@ -142,6 +143,7 @@ export class ClimateOverlay {
   private derived: Map<string, RegionDerived> = new Map();
   private block: DemBlock | null = null;
   private field: Field | null = null;
+  private edits: ElevationEdit[] = [];
   private baking: Promise<void> | null = null;
   private rebakeTimer: number | undefined;
   private coords: [[number, number], [number, number], [number, number], [number, number]];
@@ -159,7 +161,9 @@ export class ClimateOverlay {
   recompute(data: FeatureData): void {
     this.inp = climateInputs(data.worldSettings);
     this.derived = deriveClimate(data.terrainRegions, data.worldSettings);
-    if (this.field && this.block) {
+    // Rebake when the DEM block is ready — even if the field was invalidated by
+    // a terrain edit (setEdits clears it), as long as the overlay was built.
+    if (this.block && (this.field || this.added)) {
       // Debounce: a season scrub fires this on every tick, but re-baking the
       // whole raster is heavy. Coalesce rapid calls into one repaint.
       window.clearTimeout(this.rebakeTimer);
@@ -170,6 +174,13 @@ export class ClimateOverlay {
         }
       }, 120);
     }
+  }
+
+  /** Replace the terrain edits the climate field samples through. Invalidates
+   *  the cached field so the next recompute bakes against the sculpted terrain. */
+  setEdits(edits: ElevationEdit[]): void {
+    this.edits = edits;
+    this.field = null;
   }
 
   /** Sample the climate field across the raster from a loaded DEM block. */
@@ -183,12 +194,17 @@ export class ClimateOverlay {
     const biome = new Uint8Array(W * H);
     const water = new Uint8Array(W * H);
     const inp = this.inp;
+    // Sample the STRUCTURAL composite field (base DEM + edits, no detail noise),
+    // so sculpting terrain shifts temperature/precip/biome with it.
+    const sampleElev = this.edits.length > 0
+      ? makeCompositeSampler(block, this.edits, { detail: false })
+      : (lng: number, lat: number) => elevationFromBlock(block, lng, lat);
     for (let j = 0; j < H; j++) {
       // Top row = north. Sample at pixel centres.
       const lat = n - ((j + 0.5) / H) * (n - s);
       for (let i = 0; i < W; i++) {
         const lng = w + ((i + 0.5) / W) * (e - w);
-        const raw = elevationFromBlock(block, lng, lat);
+        const raw = sampleElev(lng, lat);
         const elev = raw ?? 0;
         const sea = seaLevelAt([lng, lat], inp);
         // Only flood where we actually have elevation data — a missing DEM tile
